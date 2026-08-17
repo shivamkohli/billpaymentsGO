@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>bbps-go — merchant demo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --border: #262b36; --text: #e6e8ec;
+    --muted: #8a91a3; --accent: #5b8def; --ok: #3ddc84; --bad: #ff5d6c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px; line-height: 1.5;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .subtitle { color: var(--muted); margin: 0 0 20px; }
+  .mode-pill {
+    display: inline-block; padding: 2px 10px; border-radius: 999px;
+    font-size: 12px; font-weight: 600; background: #2a2f3a; color: var(--accent);
+    margin-left: 8px; vertical-align: middle;
+  }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px; margin-bottom: 16px;
+  }
+  .card h2 { font-size: 14px; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+  .card h2 .step { color: var(--muted); font-weight: 400; font-size: 12px; }
+  label { display: block; margin: 10px 0 4px; color: var(--muted); font-size: 12px; }
+  input, select, textarea {
+    width: 100%; padding: 7px 9px; border-radius: 6px; border: 1px solid var(--border);
+    background: #0f1115; color: var(--text); font-size: 13px; font-family: inherit;
+  }
+  textarea { min-height: 50px; resize: vertical; }
+  button {
+    margin-top: 12px; padding: 8px 14px; border-radius: 6px; border: none;
+    background: var(--accent); color: #fff; font-weight: 600; font-size: 13px;
+    cursor: pointer;
+  }
+  button.secondary { background: #2a2f3a; color: var(--text); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button:hover:not(:disabled) { filter: brightness(1.1); }
+  .status { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .status.success { background: rgba(61,220,132,.15); color: var(--ok); }
+  .status.failed { background: rgba(255,93,108,.15); color: var(--bad); }
+  .status.processing { background: rgba(255,193,7,.15); color: #ffc107; }
+  .biller-list { display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto; }
+  .biller-item {
+    padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
+    display: flex; justify-content: space-between; font-size: 13px;
+  }
+  .biller-item:hover { border-color: var(--accent); }
+  .biller-item.selected { border-color: var(--accent); background: rgba(91,141,239,.1); }
+  .biller-item .meta { color: var(--muted); font-size: 11px; }
+  pre.log {
+    background: #0a0b0e; border: 1px solid var(--border); border-radius: 8px; padding: 12px;
+    max-height: 420px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; font-size: 12px;
+    margin: 0;
+  }
+  .log-entry { border-bottom: 1px solid var(--border); padding: 8px 0; }
+  .log-entry:last-child { border-bottom: none; }
+  .log-entry .head { color: var(--muted); font-size: 11px; margin-bottom: 4px; }
+  .log-entry .head .method { color: var(--accent); font-weight: 700; }
+  .hint { color: var(--muted); font-size: 11px; margin-top: 6px; }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  a.reset { color: var(--muted); font-size: 12px; text-decoration: none; float: right; }
+</style>
+</head>
+<body>
+  <h1>bbps-go <span class="mode-pill" id="modePill">checking…</span></h1>
+  <p class="subtitle">
+    Merchant-facing BBPS REST API demo — every click below hits the real Express routes,
+    goes through the mapping layer, gets XML-signed and round-tripped as NPCI XML through
+    the mock BBPCU, then mapped back to the JSON you see here.
+    &middot; <a href="/onboarding.html" style="color:var(--accent);">Try the merchant onboarding wizard &rarr;</a>
+    &middot; <a href="/billpay-widget.html" style="color:var(--accent);">Preview the customer bill-payment widget &rarr;</a>
+  </p>
+
+  <div class="card">
+    <h2>Auth <span class="step">Basic Auth — merchant API key/secret</span></h2>
+    <div class="row">
+      <div>
+        <label>Key ID</label>
+        <input id="keyId" value="rzp_test_billpay_key" />
+      </div>
+      <div>
+        <label>Key Secret</label>
+        <input id="keySecret" value="rzp_test_billpay_secret" type="password" />
+      </div>
+    </div>
+    <div class="hint">Defaults match .env.example — no need to change these for the mock demo.</div>
+  </div>
+
+  <div class="grid">
+    <div>
+      <div class="card">
+        <h2>1. Billers <span class="step">GET /v1/bill_payments/billers</span></h2>
+        <button id="loadBillers">Load billers</button>
+        <div class="biller-list" id="billerList" style="margin-top:12px;"></div>
+        <div class="hint" id="selectedBillerHint">No biller selected yet — click one above.</div>
+      </div>
+
+      <div class="card">
+        <h2>2. Bill Request <span class="step">POST /v1/bill_payments/bill_requests</span></h2>
+        <label>Biller ID</label>
+        <input id="brBillerId" placeholder="select a biller above, or type one" />
+        <div class="row">
+          <div><label>Customer name</label><input id="brName" value="Demo User" /></div>
+          <div><label>Mobile</label><input id="brMobile" value="9876543210" /></div>
+        </div>
+        <label>Initiating channel</label>
+        <select id="brChannel">
+          <option value="INT">INT (Internet Banking)</option>
+          <option value="MOB">MOB (Mobile App)</option>
+          <option value="AGT">AGT (Agent)</option>
+          <option value="ATM">ATM</option>
+        </select>
+        <button id="createBillRequest">Create bill request</button>
+        <div class="hint">Status: <span id="brStatus">—</span></div>
+      </div>
+
+      <div class="card">
+        <h2>3. Payment <span class="step">POST /v1/bill_payments/payments</span></h2>
+        <label>bill_request_id</label>
+        <input id="payBillRequestId" placeholder="filled after step 2" />
+        <div class="row">
+          <div><label>Amount (paise)</label><input id="payAmount" placeholder="e.g. 5000, or 13 to force a decline" /></div>
+          <div><label>VPA</label><input id="payVpa" value="demo@upi" /></div>
+        </div>
+        <button id="createPayment">Pay</button>
+        <div class="hint">Status: <span id="payStatus">—</span> · Tip: any amount ending in <code>13</code> triggers the mock's decline path.</div>
+      </div>
+
+      <div class="card">
+        <h2>4. Complaint <span class="step">POST /v1/bill_payments/complaints</span></h2>
+        <label>bill_payment_id</label>
+        <input id="cmpPaymentId" placeholder="filled after step 3" />
+        <label>Complaint type</label>
+        <select id="cmpType">
+          <option>Erroneously paid in wrong account</option>
+          <option>Transaction successful but service not provided</option>
+          <option>Amount debited but transaction failed</option>
+          <option>Duplicate payment</option>
+        </select>
+        <label>Description</label>
+        <textarea id="cmpDescription">Filed from the bbps-go browser demo.</textarea>
+        <button id="createComplaint">File complaint</button>
+        <div class="row" style="margin-top:8px;">
+          <button class="secondary" id="pollComplaint" disabled>Refresh status (GET, re-runs CMS enquiry)</button>
+        </div>
+        <div class="hint">Status: <span id="cmpStatus">—</span></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h2>Activity log <a class="reset" href="#" id="clearLog">clear</a></h2>
+        <pre class="log" id="log"></pre>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const state = { billers: [], selectedBillerId: null };
+
+  function authHeader() {
+    return "Basic " + btoa($("keyId").value + ":" + $("keySecret").value);
+  }
+
+  function logEntry(method, path, status, body) {
+    const el = document.createElement("div");
+    el.className = "log-entry";
+    const time = new Date().toLocaleTimeString();
+    el.innerHTML =
+      `<div class="head"><span class="method">${method}</span> ${path} — ${status} — ${time}</div>` +
+      `<div>${escapeHtml(JSON.stringify(body, null, 2))}</div>`;
+    $("log").prepend(el);
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  async function api(method, path, body) {
+    const res = await fetch(path, {
+      method,
+      headers: { "Content-Type": "application/json", Authorization: authHeader() },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const json = await res.json().catch(() => ({}));
+    logEntry(method, path, res.status, json);
+    return json;
+  }
+
+  function statusPill(status) {
+    return `<span class="status ${status}">${status}</span>`;
+  }
+
+  async function loadHealth() {
+    try {
+      const res = await fetch("/health");
+      const json = await res.json();
+      $("modePill").textContent = "BBPS_MODE=" + json.bbps_mode;
+    } catch {
+      $("modePill").textContent = "unreachable";
+    }
+  }
+
+  $("loadBillers").onclick = async () => {
+    const json = await api("GET", "/v1/bill_payments/billers");
+    state.billers = json.items || [];
+    const list = $("billerList");
+    list.innerHTML = "";
+    state.billers.forEach((b) => {
+      const item = document.createElement("div");
+      item.className = "biller-item" + (b.id === state.selectedBillerId ? " selected" : "");
+      item.innerHTML = `<span>${b.name}</span><span class="meta">${b.category} · ${b.fetch_requirement}</span>`;
+      item.onclick = () => {
+        state.selectedBillerId = b.id;
+        $("brBillerId").value = b.id;
+        $("selectedBillerHint").textContent = `Selected: ${b.name} (${b.id}) — fetch_requirement=${b.fetch_requirement}, support_bill_validation=${b.support_bill_validation}`;
+        document.querySelectorAll(".biller-item").forEach((el) => el.classList.remove("selected"));
+        item.classList.add("selected");
+      };
+      list.appendChild(item);
+    });
+  };
+
+  $("createBillRequest").onclick = async () => {
+    const billerId = $("brBillerId").value.trim();
+    if (!billerId) return alert("Pick or type a biller_id first (step 1).");
+    const json = await api("POST", "/v1/bill_payments/bill_requests", {
+      biller_id: billerId,
+      customer: { name: $("brName").value, mobile: $("brMobile").value },
+      device: { initiating_channel: $("brChannel").value },
+    });
+    $("brStatus").innerHTML = statusPill(json.status || "failed");
+    if (json.id) $("payBillRequestId").value = json.id;
+    if (json.bills && json.bills[0]) $("payAmount").value = json.bills[0].amount;
+  };
+
+  $("createPayment").onclick = async () => {
+    const billRequestId = $("payBillRequestId").value.trim();
+    const amount = Number($("payAmount").value || 0);
+    if (!billRequestId || !amount) return alert("Need a bill_request_id and amount (create a bill request in step 2 first).");
+    const json = await api("POST", "/v1/bill_payments/payments", {
+      bill_request_id: billRequestId,
+      bill_pay_amount: amount,
+      currency: "INR",
+      fees: { app_convenience_fee: 0, biller_convenience_fee: 0 },
+      payments: [{ id: "leg_" + Date.now(), provider: "razorpay", amount, currency: "INR", method: "upi", upi: { vpa: $("payVpa").value } }],
+      bills: [{ bill_number: "MOCKBILL0", amount, currency: "INR" }],
+      customer: { name: $("brName").value, mobile: $("brMobile").value },
+      biller_id: $("brBillerId").value.trim(),
+    });
+    $("payStatus").innerHTML = statusPill(json.status || "failed");
+    if (json.id) $("cmpPaymentId").value = json.id;
+  };
+
+  let lastComplaintId = null;
+  $("createComplaint").onclick = async () => {
+    const billPaymentId = $("cmpPaymentId").value.trim();
+    if (!billPaymentId) return alert("Need a bill_payment_id (create a successful payment in step 3 first).");
+    const json = await api("POST", "/v1/bill_payments/complaints", {
+      biller_id: $("brBillerId").value.trim(),
+      bill_payment_id: billPaymentId,
+      complaint_type: $("cmpType").value,
+      complaint_description: $("cmpDescription").value,
+    });
+    $("cmpStatus").innerHTML = statusPill(json.status || "failed");
+    if (json.id) {
+      lastComplaintId = json.id;
+      $("pollComplaint").disabled = false;
+    }
+  };
+
+  $("pollComplaint").onclick = async () => {
+    if (!lastComplaintId) return;
+    const json = await api("GET", `/v1/bill_payments/complaints/${lastComplaintId}`);
+    $("cmpStatus").innerHTML = statusPill(json.status || "failed") + ` (gateway: ${json.gateway_complaint_status || "—"})`;
+  };
+
+  $("clearLog").onclick = (e) => {
+    e.preventDefault();
+    $("log").innerHTML = "";
+  };
+
+  loadHealth();
+</script>
+</body>
+</html>

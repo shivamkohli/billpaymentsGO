@@ -1,0 +1,837 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Bill Payments</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!--
+  Customer-facing bill-payment WIDGET (not the merchant onboarding wizard —
+  see onboarding.html for that). This is the thing an end customer actually
+  taps through inside a merchant partner's app: search a biller, fetch/enter
+  a bill, pay it, see a receipt, optionally raise a complaint.
+
+  Two things this file is deliberately built around:
+
+  1. "Embeddable section" shape. Per the onboarding wizard's
+     integration_mode=existing_app_section option, this is meant to be
+     dropped into a host app (iframe / in-app WebView) as a self-contained
+     widget, not a full page with its own nav chrome. Kept narrow
+     (max-width ~440px) and chrome-light on purpose.
+
+  2. Theme-swappable, because the real BBPS/Bharat Connect brand guidelines
+     don't exist yet ("will share later"). Every visual token that a brand
+     guideline would dictate — colors, radius, font, logo, receipt
+     co-branding — lives in the `--bbps-*` CSS custom properties block below
+     and can be overridden three ways without touching structure/markup:
+       a) URL query params (?primary_color=...&merchant_logo=...), for
+          embedding via iframe src.
+       b) postMessage from a host page: window.postMessage({type:"bbps:theme", theme:{...}}, "*")
+       c) the in-page "Demo settings" panel (bottom-right gear), for
+          clicking through the re-skin live in a browser.
+     When the real guidelines land, swap the DEFAULT_THEME values below —
+     no other change required, same design principle as BBPS_MODE=live.
+
+  Calls the real merchant-facing REST API this repo exposes
+  (`/v1/bill_payments/*`), same-origin, same as public/index.html — see the
+  Demo settings panel for why embedding a Basic Auth key/secret in browser
+  JS here is demo-only, not a production pattern.
+-->
+<style>
+  /* ── BBPS BRAND PLACEHOLDER ──────────────────────────────────────────────
+     Everything in :root is a stand-in. Swap these values (or override via
+     query params / postMessage / the Demo settings panel) once the real
+     BBPS/Bharat Connect brand guidelines are shared — no markup changes
+     needed anywhere below. */
+  :root {
+    --bbps-primary: #2b5fe0;
+    --bbps-primary-text: #ffffff;
+    --bbps-bg: #eef1f6;
+    --bbps-surface: #ffffff;
+    --bbps-border: #e3e5ea;
+    --bbps-text: #1a1d23;
+    --bbps-muted: #6b7280;
+    --bbps-ok: #1a9c5e;
+    --bbps-bad: #c23a3a;
+    --bbps-warn: #b8860b;
+    --bbps-radius: 14px;
+    --bbps-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --bbps-logo-url: "";
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bbps-bg); color: var(--bbps-text);
+    font-family: var(--bbps-font); font-size: 14px; min-height: 100vh;
+    display: flex; justify-content: center; padding: 28px 12px;
+  }
+  .page-hint { position: fixed; top: 8px; left: 0; right: 0; text-align: center; font-size: 11px; color: var(--bbps-muted); }
+  .page-hint a { color: var(--bbps-muted); }
+  .widget {
+    width: 100%; max-width: 440px; background: var(--bbps-surface);
+    border-radius: var(--bbps-radius); box-shadow: 0 2px 24px rgba(20,20,30,0.08);
+    overflow: hidden; border: 1px solid var(--bbps-border); margin-top: 18px;
+  }
+  .widget-header {
+    display: flex; align-items: center; gap: 10px; padding: 14px 16px;
+    background: var(--bbps-primary); color: var(--bbps-primary-text);
+  }
+  .widget-header .logo-badge {
+    width: 26px; height: 26px; border-radius: 7px; background: rgba(255,255,255,0.18);
+    display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800;
+    overflow: hidden; flex-shrink: 0;
+  }
+  .widget-header .logo-badge img { width: 100%; height: 100%; object-fit: contain; }
+  .widget-header .title { font-weight: 700; font-size: 15px; flex: 1; }
+  .widget-header .back-btn, .widget-header .reset-btn {
+    background: none; border: none; color: var(--bbps-primary-text); cursor: pointer; font-size: 13px;
+    opacity: 0.9; padding: 4px;
+  }
+  .widget-body { padding: 16px; }
+  .screen { display: none; }
+  .screen.active { display: block; }
+  .search-box {
+    display: flex; align-items: center; gap: 8px; border: 1px solid var(--bbps-border);
+    border-radius: 10px; padding: 9px 12px; margin-bottom: 12px; background: #fafbfc;
+  }
+  .search-box input { border: none; outline: none; flex: 1; font-size: 13px; background: transparent; color: var(--bbps-text); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .chip {
+    padding: 6px 12px; border-radius: 999px; border: 1px solid var(--bbps-border); background: #fff;
+    cursor: pointer; font-size: 12px; color: var(--bbps-muted); user-select: none;
+  }
+  .chip.selected { background: var(--bbps-primary); border-color: var(--bbps-primary); color: var(--bbps-primary-text); }
+  .chip.coming-soon { border-style: dashed; color: var(--bbps-warn); position: relative; }
+  .chip.coming-soon.selected { background: rgba(184,134,11,.12); border-color: var(--bbps-warn); color: var(--bbps-warn); }
+  .chip.coming-soon .soon-tag { font-size: 9px; margin-left: 4px; opacity: 0.85; }
+  .scope-banner {
+    background: #eef2ff; border: 1px solid var(--bbps-border); border-radius: 8px; padding: 8px 10px;
+    font-size: 11.5px; color: #374151; margin-bottom: 12px; display: none;
+  }
+  .scope-banner a { color: var(--bbps-primary); text-decoration: none; }
+  .biller-row {
+    display: flex; align-items: center; justify-content: space-between; padding: 12px 8px;
+    border-bottom: 1px solid var(--bbps-border); cursor: pointer; gap: 10px;
+  }
+  .biller-row:last-child { border-bottom: none; }
+  .biller-row:hover { background: #fafbfc; }
+  .biller-row .left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .biller-row .name { font-weight: 600; font-size: 13.5px; }
+  .biller-row .cat { font-size: 11.5px; color: var(--bbps-muted); margin-top: 2px; }
+  .biller-row .chev { color: var(--bbps-muted); flex-shrink: 0; }
+  .biller-logo {
+    width: 32px; height: 32px; border-radius: 7px; border: 1px solid var(--bbps-border);
+    object-fit: contain; background: #fff; flex-shrink: 0; padding: 3px;
+  }
+  .biller-logo.sm { width: 36px; height: 36px; }
+  .empty-state { text-align: center; color: var(--bbps-muted); font-size: 12.5px; padding: 24px 8px; }
+  label { display: block; margin: 12px 0 5px; font-size: 12px; font-weight: 600; color: #374151; }
+  input[type=text], input[type=number], input[type=tel], select, textarea {
+    width: 100%; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--bbps-border);
+    background: #fff; color: var(--bbps-text); font-size: 13px; font-family: inherit;
+  }
+  textarea { min-height: 60px; resize: vertical; }
+  .hint { color: var(--bbps-muted); font-size: 11px; margin-top: 5px; }
+  .row { display: flex; gap: 10px; }
+  .row > * { flex: 1; }
+  .biller-summary {
+    background: #fafbfc; border: 1px solid var(--bbps-border); border-radius: 10px; padding: 12px;
+    margin-bottom: 4px;
+  }
+  .biller-summary { display: flex; align-items: center; gap: 12px; }
+  .biller-summary .name { font-weight: 700; font-size: 14px; }
+  .biller-summary .cat { color: var(--bbps-muted); font-size: 12px; }
+  button.primary {
+    width: 100%; margin-top: 16px; padding: 12px; border-radius: 10px; border: none;
+    background: var(--bbps-primary); color: var(--bbps-primary-text); font-weight: 700; font-size: 14px; cursor: pointer;
+  }
+  button.primary:hover:not(:disabled) { filter: brightness(1.06); }
+  button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.secondary {
+    width: 100%; margin-top: 8px; padding: 10px; border-radius: 10px; border: 1px solid var(--bbps-border);
+    background: #fff; color: var(--bbps-text); font-weight: 600; font-size: 13px; cursor: pointer;
+  }
+  .error-banner {
+    background: #fdecec; border: 1px solid #f3b4b4; color: #a11; padding: 9px 11px; border-radius: 8px;
+    font-size: 12.5px; margin-bottom: 10px; display: none;
+  }
+  .method-tabs { display: flex; gap: 8px; margin-top: 10px; }
+  .method-tab {
+    flex: 1; text-align: center; padding: 9px; border-radius: 8px; border: 1px solid var(--bbps-border);
+    cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--bbps-muted); background: #fff;
+  }
+  .method-tab.selected { border-color: var(--bbps-primary); color: var(--bbps-primary); background: rgba(43,95,224,0.06); }
+  .bill-amount-block { text-align: center; padding: 14px 0 4px; }
+  .bill-amount-block .amount { font-size: 30px; font-weight: 800; }
+  .bill-amount-block .meta { color: var(--bbps-muted); font-size: 12px; margin-top: 4px; }
+  .amount-edit { margin-top: 12px; }
+  .receipt-icon { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 26px; margin: 6px auto 12px; color: #fff; }
+  .receipt-icon.success { background: var(--bbps-ok); }
+  .receipt-icon.failed { background: var(--bbps-bad); }
+  .receipt-title { text-align: center; font-size: 16px; font-weight: 700; }
+  .receipt-sub { text-align: center; color: var(--bbps-muted); font-size: 12.5px; margin-top: 2px; }
+  .receipt-card { margin-top: 16px; border: 1px solid var(--bbps-border); border-radius: 10px; overflow: hidden; }
+  .receipt-line { display: flex; justify-content: space-between; padding: 9px 12px; font-size: 12.5px; border-bottom: 1px solid var(--bbps-border); }
+  .receipt-line:last-child { border-bottom: none; }
+  .receipt-line .k { color: var(--bbps-muted); }
+  .receipt-line .v { font-weight: 600; text-align: right; }
+  .co-brand-row { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--bbps-border); }
+  .co-brand-row img { height: 20px; max-width: 90px; object-fit: contain; }
+  .co-brand-row .badge { font-size: 10px; font-weight: 700; color: var(--bbps-muted); border: 1px solid var(--bbps-border); border-radius: 6px; padding: 3px 6px; }
+  .status-pill { font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; text-transform: uppercase; }
+  .status-pill.success { background: rgba(26,156,94,.12); color: var(--bbps-ok); }
+  .status-pill.failed { background: rgba(194,58,58,.12); color: var(--bbps-bad); }
+  .status-pill.processing { background: rgba(184,134,11,.12); color: var(--bbps-warn); }
+  .field-error { color: var(--bbps-bad); font-size: 11px; margin-top: 4px; display: none; }
+
+  /* Demo settings panel — not part of the widget; a convenience for
+     clicking through re-theming/re-auth without editing URL params. */
+  .demo-gear {
+    position: fixed; bottom: 16px; right: 16px; width: 38px; height: 38px; border-radius: 50%;
+    background: #1a1d23; color: #fff; border: none; cursor: pointer; font-size: 16px; z-index: 20;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+  }
+  .demo-panel {
+    position: fixed; bottom: 62px; right: 16px; width: 280px; background: #fff; border: 1px solid var(--bbps-border);
+    border-radius: 12px; padding: 14px; box-shadow: 0 4px 24px rgba(0,0,0,0.18); display: none; z-index: 20;
+    font-size: 12px;
+  }
+  .demo-panel.open { display: block; }
+  .demo-panel h3 { margin: 0 0 8px; font-size: 12.5px; }
+  .demo-panel label { font-size: 11px; margin: 8px 0 3px; }
+  .demo-panel input[type=text], .demo-panel input[type=color] { padding: 6px 8px; font-size: 12px; }
+  .demo-panel .warn { color: var(--bbps-warn); font-size: 10.5px; margin-top: 8px; line-height: 1.4; }
+  .demo-panel button { margin-top: 10px; width: 100%; padding: 7px; border-radius: 7px; border: 1px solid var(--bbps-border); background: #f5f6f8; cursor: pointer; font-size: 12px; }
+  .checkbox-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+  .checkbox-row input { width: auto; }
+</style>
+</head>
+<body>
+
+  <div class="page-hint" id="pageHint">Embeddable bill-payment widget preview &middot; <a href="/">API demo</a> &middot; <a href="/onboarding.html">merchant onboarding wizard</a></div>
+
+  <div class="widget" id="widget">
+    <div class="widget-header">
+      <span class="logo-badge" id="brandBadge">₩</span>
+      <span class="title" id="headerTitle">Bill Payments</span>
+      <button class="back-btn" id="backBtn" style="display:none;">&larr; Back</button>
+      <button class="reset-btn" id="resetBtn" title="Start over">&#x21bb;</button>
+    </div>
+    <div class="widget-body">
+      <div class="error-banner" id="errorBanner"></div>
+      <div class="scope-banner" id="scopeBanner"></div>
+
+      <!-- Screen 1: search / browse billers -->
+      <div class="screen active" id="screen-search">
+        <div class="search-box">
+          <span>&#128269;</span>
+          <input type="text" id="searchInput" placeholder="Search billers (e.g. electricity, DTH, Jio)" />
+        </div>
+        <div class="chips" id="categoryChips"></div>
+        <div id="billerList"><div class="empty-state">Loading billers&hellip;</div></div>
+      </div>
+
+      <!-- Screen 2: customer / biller-specific details -->
+      <div class="screen" id="screen-details">
+        <div class="biller-summary">
+          <img class="biller-logo sm" id="detailsBillerLogo" src="" alt="" style="display:none" onerror="this.style.display='none'" />
+          <div>
+            <div class="name" id="detailsBillerName"></div>
+            <div class="cat" id="detailsBillerMeta"></div>
+          </div>
+        </div>
+        <div class="row">
+          <div><label>Your name</label><input type="text" id="customerName" placeholder="Full name" /></div>
+          <div><label>Mobile number</label><input type="tel" id="customerMobile" placeholder="10-digit mobile" maxlength="10" /></div>
+        </div>
+        <div id="dynamicParams"></div>
+        <button class="primary" id="fetchBillBtn">Fetch bill</button>
+        <div class="hint">We'll pull your latest bill details securely from the biller via BBPS.</div>
+      </div>
+
+      <!-- Screen 3: bill details + pay -->
+      <div class="screen" id="screen-bill">
+        <div id="billInfoBlock"></div>
+        <div class="amount-edit" id="amountEditBlock" style="display:none;">
+          <label>Amount to pay (&#8377;)</label>
+          <input type="number" id="payAmountInput" min="1" step="0.01" />
+          <div class="hint" id="amountHint"></div>
+        </div>
+        <label style="margin-top:16px;">Pay using</label>
+        <div class="method-tabs">
+          <div class="method-tab selected" id="tabUpi">UPI</div>
+          <div class="method-tab" id="tabCard">Card</div>
+        </div>
+        <div id="methodUpiFields">
+          <label>UPI ID</label>
+          <input type="text" id="upiVpaInput" value="demo@upi" placeholder="yourname@bank" />
+        </div>
+        <div id="methodCardFields" style="display:none;">
+          <div class="row">
+            <div><label>Card type</label>
+              <select id="cardType"><option value="debit">Debit</option><option value="credit">Credit</option></select>
+            </div>
+            <div><label>Last 4 digits</label><input type="text" id="cardLast4" value="4242" maxlength="4" /></div>
+          </div>
+        </div>
+        <button class="primary" id="payBtn">Pay</button>
+        <div class="hint">Demo tip: an amount whose paise value ends in <code>13</code> (e.g. &#8377;50.13) simulates a biller decline, so you can try the complaint flow below.</div>
+      </div>
+
+      <!-- Screen 4: receipt -->
+      <div class="screen" id="screen-receipt">
+        <div id="receiptTop"></div>
+        <div class="receipt-card" id="receiptDetails"></div>
+        <div class="co-brand-row" id="coBrandRow" style="display:none;">
+          <span class="badge" id="bbpsBadge">BHARAT CONNECT</span>
+          <img id="merchantLogoImg" alt="merchant logo" style="display:none;" />
+        </div>
+        <button class="primary" id="doneBtn" style="display:none;">Done</button>
+        <button class="secondary" id="complainBtn" style="display:none;">Raise a complaint</button>
+      </div>
+
+      <!-- Screen 5: complaint -->
+      <div class="screen" id="screen-complaint">
+        <div id="complaintForm">
+          <label>What went wrong?</label>
+          <select id="complaintType">
+            <option>Erroneously paid in wrong account</option>
+            <option>Transaction successful but service not provided</option>
+            <option>Amount debited but transaction failed</option>
+            <option>Duplicate payment</option>
+          </select>
+          <label>Tell us more (optional)</label>
+          <textarea id="complaintDescription" placeholder="Describe the issue&hellip;"></textarea>
+          <button class="primary" id="submitComplaintBtn">Submit complaint</button>
+        </div>
+        <div id="complaintResult" style="display:none;">
+          <div class="receipt-card" id="complaintDetails"></div>
+          <button class="secondary" id="pollComplaintBtn">Refresh status</button>
+          <button class="primary" id="complaintDoneBtn">Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <button class="demo-gear" id="demoGearBtn" title="Demo settings">&#9881;</button>
+  <div class="demo-panel" id="demoPanel">
+    <h3>Demo settings</h3>
+    <label>Primary color</label>
+    <input type="color" id="setPrimaryColor" value="#2b5fe0" />
+    <label>Merchant logo URL</label>
+    <input type="text" id="setMerchantLogo" placeholder="https://.../logo.png" />
+    <div class="checkbox-row"><input type="checkbox" id="setCoBranding" /><label style="margin:0;">Show co-branding on receipt</label></div>
+    <label>API key ID</label>
+    <input type="text" id="setKeyId" value="rzp_test_billpay_key" />
+    <label>API key secret</label>
+    <input type="text" id="setKeySecret" value="rzp_test_billpay_secret" />
+    <button id="applyThemeBtn">Apply</button>
+    <div class="warn">Embedding an API secret in browser JS is demo-only. In production the host app's backend should proxy this call rather than shipping the key/secret to the client.</div>
+  </div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const root = document.documentElement.style;
+
+  // ── theming ────────────────────────────────────────────────────────────
+  const params = new URLSearchParams(location.search);
+  const theme = {
+    primary_color: params.get("primary_color") || localStorage.getItem("bbps_primary_color") || "#2b5fe0",
+    merchant_logo: params.get("merchant_logo") || localStorage.getItem("bbps_merchant_logo") || "",
+    co_branding: params.has("co_branding")
+      ? params.get("co_branding") === "true"
+      : localStorage.getItem("bbps_co_branding") === "true",
+    key_id: params.get("key_id") || localStorage.getItem("bbps_key_id") || "rzp_test_billpay_key",
+    key_secret: params.get("key_secret") || localStorage.getItem("bbps_key_secret") || "rzp_test_billpay_secret",
+  };
+
+  function applyTheme(t) {
+    Object.assign(theme, t);
+    root.setProperty("--bbps-primary", theme.primary_color);
+    if (theme.merchant_logo) {
+      $("brandBadge").innerHTML = `<img src="${theme.merchant_logo}" onerror="this.style.display='none'" />`;
+      $("merchantLogoImg").src = theme.merchant_logo;
+      $("merchantLogoImg").style.display = "inline-block";
+    } else {
+      $("brandBadge").textContent = "₩";
+      $("merchantLogoImg").style.display = "none";
+    }
+    $("coBrandRow").style.display = theme.co_branding ? "flex" : "none";
+    localStorage.setItem("bbps_primary_color", theme.primary_color);
+    localStorage.setItem("bbps_merchant_logo", theme.merchant_logo);
+    localStorage.setItem("bbps_co_branding", String(theme.co_branding));
+    localStorage.setItem("bbps_key_id", theme.key_id);
+    localStorage.setItem("bbps_key_secret", theme.key_secret);
+  }
+
+  // Host apps embedding this widget (e.g. inside an iframe) can re-theme it
+  // at runtime without reloading, e.g.:
+  //   iframe.contentWindow.postMessage({ type: "bbps:theme", theme: { primary_color: "#111827" } }, "*");
+  window.addEventListener("message", (e) => {
+    if (e.data && e.data.type === "bbps:theme") applyTheme(e.data.theme || {});
+  });
+
+  applyTheme(theme);
+  $("setPrimaryColor").value = theme.primary_color;
+  $("setMerchantLogo").value = theme.merchant_logo;
+  $("setCoBranding").checked = theme.co_branding;
+  $("setKeyId").value = theme.key_id;
+  $("setKeySecret").value = theme.key_secret;
+
+  $("demoGearBtn").onclick = () => $("demoPanel").classList.toggle("open");
+  $("applyThemeBtn").onclick = () => {
+    applyTheme({
+      primary_color: $("setPrimaryColor").value,
+      merchant_logo: $("setMerchantLogo").value.trim(),
+      co_branding: $("setCoBranding").checked,
+      key_id: $("setKeyId").value.trim() || "rzp_test_billpay_key",
+      key_secret: $("setKeySecret").value.trim() || "rzp_test_billpay_secret",
+    });
+    $("demoPanel").classList.remove("open");
+  };
+
+  // ── API helper ────────────────────────────────────────────────────────
+  function authHeader() {
+    return "Basic " + btoa(theme.key_id + ":" + theme.key_secret);
+  }
+  function showApiError(message) {
+    const box = $("errorBanner");
+    box.textContent = message;
+    box.style.display = "block";
+  }
+  function hideApiError() { $("errorBanner").style.display = "none"; }
+
+  async function api(method, path, body) {
+    hideApiError();
+    let res, json;
+    try {
+      res = await fetch(path, {
+        method,
+        headers: { "Content-Type": "application/json", Authorization: authHeader() },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      json = await res.json().catch(() => ({}));
+    } catch (err) {
+      showApiError("Network error: " + err.message);
+      throw err;
+    }
+    if (!res.ok) {
+      showApiError((json.error && json.error.description) || `Request failed (${res.status})`);
+    }
+    return { ok: res.ok, status: res.status, body: json };
+  }
+
+  function statusPill(status) {
+    return `<span class="status-pill ${status}">${status}</span>`;
+  }
+  function rupees(paise) { return (Number(paise || 0) / 100).toFixed(2); }
+
+  // ── screen navigation ────────────────────────────────────────────────
+  const SCREEN_ORDER = ["search", "details", "bill", "receipt", "complaint"];
+  const screenTitles = {
+    search: "Bill Payments",
+    details: "Bill details",
+    bill: "Review & pay",
+    receipt: "Receipt",
+    complaint: "Raise a complaint",
+  };
+  let currentScreen = "search";
+  let screenHistory = [];
+
+  function showScreen(name, { pushHistory = true } = {}) {
+    if (pushHistory && currentScreen !== name) screenHistory.push(currentScreen);
+    SCREEN_ORDER.forEach((s) => $("screen-" + s).classList.toggle("active", s === name));
+    currentScreen = name;
+    $("headerTitle").textContent = screenTitles[name] || "Bill Payments";
+    $("backBtn").style.display = screenHistory.length > 0 ? "inline-block" : "none";
+    hideApiError();
+  }
+  $("backBtn").onclick = () => {
+    const prev = screenHistory.pop();
+    if (prev) showScreen(prev, { pushHistory: false });
+  };
+
+  const state = { billers: [], selectedBiller: null, billRequest: null, payment: null, complaint: null, method: "upi" };
+
+  // ── onboarding-driven scoping ─────────────────────────────────────────
+  // If this widget was opened from the merchant onboarding wizard's "Open
+  // live preview" link (?onboarding_id=...), fetch that submission and let
+  // it drive theming + which categories/billers are shown — so the preview
+  // reflects *this merchant's* actual picks, not the full demo catalogue.
+  let categoryScope = null; // null = unscoped (show everything); else curated_offering.categories[]
+  let onboardingConfig = null;
+
+  async function loadOnboardingConfig(id) {
+    try {
+      const res = await fetch(`/v1/merchant_onboarding/${id}`);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+
+  async function applyOnboardingScope() {
+    const onboardingId = params.get("onboarding_id");
+    if (!onboardingId) return;
+    const resource = await loadOnboardingConfig(onboardingId);
+    const banner = $("scopeBanner");
+    if (!resource) {
+      banner.style.display = "block";
+      banner.textContent = `Couldn't load onboarding submission "${onboardingId}" — showing the full unscoped demo catalogue instead.`;
+      return;
+    }
+    onboardingConfig = resource;
+    categoryScope = resource.curated_offering.categories;
+
+    applyTheme({
+      primary_color: (resource.branding && resource.branding.brand_color) || theme.primary_color,
+      merchant_logo: (resource.branding && resource.branding.logo_url) || theme.merchant_logo,
+      co_branding: resource.receipt_co_branding === true,
+    });
+    $("setPrimaryColor").value = theme.primary_color;
+    $("setMerchantLogo").value = theme.merchant_logo;
+    $("setCoBranding").checked = theme.co_branding;
+
+    const modeLabel = resource.integration_mode === "existing_app_section" ? "embedded section" : "standalone app";
+    banner.style.display = "block";
+    banner.innerHTML =
+      `Personalized preview (${modeLabel}) for: &ldquo;${escapeHtml(resource.business_description)}&rdquo; &middot; ` +
+      `<a href="/onboarding.html">edit submission</a>`;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  function resetFlow() {
+    state.selectedBiller = null;
+    state.billRequest = null;
+    state.payment = null;
+    state.complaint = null;
+    screenHistory = [];
+    $("complaintForm").style.display = "block";
+    $("complaintResult").style.display = "none";
+    showScreen("search", { pushHistory: false });
+  }
+  $("resetBtn").onclick = resetFlow;
+
+  // ── Screen 1: search / browse ────────────────────────────────────────
+  async function loadBillers() {
+    const { ok, body } = await api("GET", "/v1/bill_payments/billers");
+    state.billers = ok ? body.items || [] : [];
+    renderCategoryChips();
+    renderBillerList();
+  }
+
+  let activeCategory = null;
+
+  /** Categories to offer: every category from the merchant's onboarding
+   *  submission when scoped, else every category present in the demo
+   *  catalogue. Scoped mode keeps "coming soon" categories visible
+   *  (disabled, distinctly styled) rather than hiding them, so the preview
+   *  stays honest about coverage — same principle as the onboarding
+   *  wizard's curated_offering. */
+  function availableCategories() {
+    if (categoryScope) return categoryScope.map((c) => ({ category: c.category, status: c.status }));
+    return Array.from(new Set(state.billers.map((b) => b.category))).map((category) => ({ category, status: "live_sample_billers" }));
+  }
+
+  function renderCategoryChips() {
+    const categories = availableCategories();
+    const container = $("categoryChips");
+    container.innerHTML = "";
+    const allChip = document.createElement("div");
+    allChip.className = "chip" + (activeCategory === null ? " selected" : "");
+    allChip.textContent = "All";
+    allChip.onclick = () => { activeCategory = null; renderCategoryChips(); renderBillerList(); };
+    container.appendChild(allChip);
+    categories.forEach(({ category, status }) => {
+      const comingSoon = status === "coming_soon";
+      const chip = document.createElement("div");
+      chip.className = "chip" + (comingSoon ? " coming-soon" : "") + (activeCategory === category ? " selected" : "");
+      chip.innerHTML = comingSoon ? `${category}<span class="soon-tag">SOON</span>` : category;
+      chip.title = comingSoon ? "No sample billers live in this category yet." : "";
+      chip.onclick = () => { activeCategory = category; renderCategoryChips(); renderBillerList(); };
+      container.appendChild(chip);
+    });
+  }
+
+  function renderBillerList() {
+    const q = $("searchInput").value.trim().toLowerCase();
+    const liveCategories = categoryScope
+      ? new Set(categoryScope.filter((c) => c.status === "live_sample_billers").map((c) => c.category))
+      : null; // null = every category in the demo catalogue is in-scope
+
+    if (activeCategory && liveCategories && !liveCategories.has(activeCategory)) {
+      // A "coming soon" category chip was clicked — there are no sample billers to list, so say so
+      // rather than silently falling through to an empty "no results" state.
+      $("billerList").innerHTML =
+        `<div class="empty-state">&#128679; <strong>${activeCategory}</strong> is on our roadmap but doesn't have sample billers wired up yet. ` +
+        `Our onboarding team will provision this from NPCI's Biller MDM feed once BBPS credentials are issued.</div>`;
+      return;
+    }
+
+    const filtered = state.billers.filter((b) => {
+      const inScope = !liveCategories || liveCategories.has(b.category);
+      const matchesCategory = !activeCategory || b.category === activeCategory;
+      const matchesSearch = !q || b.name.toLowerCase().includes(q) || (b.alias_name || "").toLowerCase().includes(q);
+      return inScope && matchesCategory && matchesSearch;
+    });
+    const list = $("billerList");
+    list.innerHTML = "";
+    if (filtered.length === 0) {
+      list.innerHTML = `<div class="empty-state">No billers match &ldquo;${q}&rdquo;. Try a different search or category.</div>`;
+      return;
+    }
+    filtered.forEach((b) => {
+      const row = document.createElement("div");
+      row.className = "biller-row";
+      const logo = b.logo_url
+        ? `<img class="biller-logo" src="${b.logo_url}" alt="" onerror="this.style.display='none'" />`
+        : "";
+      row.innerHTML =
+        `<div class="left">${logo}<div><div class="name">${b.alias_name || b.name}</div><div class="cat">${b.category}</div></div></div>` +
+        `<span class="chev">&rsaquo;</span>`;
+      row.onclick = () => selectBiller(b);
+      list.appendChild(row);
+    });
+  }
+  $("searchInput").addEventListener("input", renderBillerList);
+
+  // ── Screen 2: details / dynamic customer params ─────────────────────
+  function selectBiller(biller) {
+    state.selectedBiller = biller;
+    const logoEl = $("detailsBillerLogo");
+    if (biller.logo_url) {
+      logoEl.src = biller.logo_url;
+      logoEl.style.display = "";
+    } else {
+      logoEl.style.display = "none";
+    }
+    $("detailsBillerName").textContent = biller.alias_name || biller.name;
+    $("detailsBillerMeta").textContent =
+      `${biller.category} &middot; ${biller.fetch_requirement === "NOT_SUPPORTED" && biller.support_bill_validation === "NOT_SUPPORTED" ? "pay any amount, no bill lookup" : "we'll fetch your bill"}`
+        .replace("&middot;", "·");
+    const container = $("dynamicParams");
+    container.innerHTML = "";
+    (biller.customer_params || []).forEach((p) => {
+      const wrap = document.createElement("div");
+      const inputId = "param_" + p.name.replace(/\W+/g, "_");
+      wrap.innerHTML = `
+        <label>${p.label || p.name}${p.optional ? " (optional)" : ""}</label>
+        <input type="text" id="${inputId}" data-param-name="${p.name}" data-min="${p.min_length || ""}" data-max="${p.max_length || ""}" data-regex="${p.regex || ""}" data-optional="${!!p.optional}" maxlength="${p.max_length || 40}" />
+        <div class="field-error" id="${inputId}_error"></div>
+      `;
+      container.appendChild(wrap);
+    });
+    showScreen("details");
+  }
+
+  function validateDynamicParams() {
+    let valid = true;
+    const values = {};
+    document.querySelectorAll("#dynamicParams [data-param-name]").forEach((input) => {
+      const name = input.dataset.paramName;
+      const value = input.value.trim();
+      const errorEl = $(input.id + "_error");
+      errorEl.style.display = "none";
+      const optional = input.dataset.optional === "true";
+      const min = Number(input.dataset.min || 0);
+      const max = Number(input.dataset.max || 0);
+      const regex = input.dataset.regex;
+      if (!value) {
+        if (!optional) { errorEl.textContent = "Required."; errorEl.style.display = "block"; valid = false; }
+        return;
+      }
+      if (min && value.length < min) { errorEl.textContent = `Must be at least ${min} characters.`; errorEl.style.display = "block"; valid = false; return; }
+      if (max && value.length > max) { errorEl.textContent = `Must be at most ${max} characters.`; errorEl.style.display = "block"; valid = false; return; }
+      if (regex && !new RegExp(regex).test(value)) { errorEl.textContent = "Doesn't look right — please check."; errorEl.style.display = "block"; valid = false; return; }
+      values[name] = value;
+    });
+    return valid ? values : null;
+  }
+
+  $("fetchBillBtn").onclick = async () => {
+    const name = $("customerName").value.trim();
+    const mobile = $("customerMobile").value.trim();
+    if (!name || !/^[0-9]{10}$/.test(mobile)) {
+      showApiError("Enter your name and a valid 10-digit mobile number.");
+      return;
+    }
+    const accountHolder = validateDynamicParams();
+    if (accountHolder === null) return;
+
+    $("fetchBillBtn").disabled = true;
+    $("fetchBillBtn").textContent = "Fetching…";
+    const { ok, body } = await api("POST", "/v1/bill_payments/bill_requests", {
+      biller_id: state.selectedBiller.id,
+      customer: { name, mobile },
+      device: { initiating_channel: "MOB" },
+      biller_data: Object.keys(accountHolder).length ? { account_holder: accountHolder } : undefined,
+    });
+    $("fetchBillBtn").disabled = false;
+    $("fetchBillBtn").textContent = "Fetch bill";
+    if (!ok) return;
+    state.billRequest = body;
+    if (body.status === "failed") {
+      showApiError((body.error && body.error.description) || "Couldn't fetch this bill. Please check your details and try again.");
+      return;
+    }
+    renderBillScreen();
+    showScreen("bill");
+  };
+
+  // ── Screen 3: bill + pay ──────────────────────────────────────────────
+  function renderBillScreen() {
+    const br = state.billRequest;
+    const biller = state.selectedBiller;
+    const bill = br.bills && br.bills[0];
+    const adhoc = br.data && br.data.adhoc_only;
+    const block = $("billInfoBlock");
+    const amountBlock = $("amountEditBlock");
+    const amountInput = $("payAmountInput");
+
+    if (bill) {
+      block.innerHTML = `
+        <div class="bill-amount-block">
+          <div class="meta">${biller.alias_name || biller.name}</div>
+          <div class="amount">&#8377;${rupees(bill.amount)}</div>
+          <div class="meta">${bill.due_date ? "Due " + bill.due_date : ""}${bill.bill_number && bill.bill_number !== "NA" ? " &middot; Bill #" + bill.bill_number : ""}</div>
+        </div>`;
+      const exactness = biller.payment_amount_exactness || "Exact";
+      if (exactness === "Exact") {
+        amountBlock.style.display = "none";
+        amountInput.value = rupees(bill.amount);
+        amountInput.readOnly = true;
+      } else {
+        amountBlock.style.display = "block";
+        amountInput.readOnly = false;
+        amountInput.value = rupees(bill.amount);
+        amountInput.min = exactness === "Exact and above" ? rupees(bill.amount) : "0.01";
+        amountInput.max = exactness === "Exact and below" ? rupees(bill.amount) : "";
+        $("amountHint").textContent =
+          exactness === "Exact and above"
+            ? `You can pay ${rupees(bill.amount)} or more.`
+            : `You can pay up to ${rupees(bill.amount)}.`;
+      }
+    } else if (adhoc) {
+      block.innerHTML = `
+        <div class="bill-amount-block">
+          <div class="meta">${biller.alias_name || biller.name}</div>
+          <div class="meta" style="margin-top:8px;">This biller doesn't support bill lookup — enter the amount you'd like to pay.</div>
+        </div>`;
+      amountBlock.style.display = "block";
+      amountInput.readOnly = false;
+      amountInput.value = "";
+      amountInput.min = "0.01";
+      amountInput.max = "";
+      $("amountHint").textContent = "";
+    }
+  }
+
+  $("tabUpi").onclick = () => { state.method = "upi"; $("tabUpi").classList.add("selected"); $("tabCard").classList.remove("selected"); $("methodUpiFields").style.display = "block"; $("methodCardFields").style.display = "none"; };
+  $("tabCard").onclick = () => { state.method = "card"; $("tabCard").classList.add("selected"); $("tabUpi").classList.remove("selected"); $("methodCardFields").style.display = "block"; $("methodUpiFields").style.display = "none"; };
+
+  $("payBtn").onclick = async () => {
+    const amountRupees = Number($("payAmountInput").value);
+    if (!amountRupees || amountRupees <= 0) { showApiError("Enter a valid amount to pay."); return; }
+    const amountPaise = Math.round(amountRupees * 100);
+    const br = state.billRequest;
+    const bill = br.bills && br.bills[0];
+
+    const leg = state.method === "upi"
+      ? { id: "leg_" + Date.now(), provider: "razorpay", amount: amountPaise, currency: "INR", method: "upi", upi: { vpa: $("upiVpaInput").value.trim() || "demo@upi" } }
+      : { id: "leg_" + Date.now(), provider: "razorpay", amount: amountPaise, currency: "INR", method: "card", card: { type: $("cardType").value, last4: $("cardLast4").value.trim() || "4242" } };
+
+    $("payBtn").disabled = true;
+    $("payBtn").textContent = "Processing…";
+    const { ok, body } = await api("POST", "/v1/bill_payments/payments", {
+      bill_request_id: br.id,
+      bill_pay_amount: amountPaise,
+      currency: "INR",
+      fees: { app_convenience_fee: 0, biller_convenience_fee: 0 },
+      payments: [leg],
+      bills: [{ bill_number: (bill && bill.bill_number) || "ADHOC0", amount: amountPaise, currency: "INR" }],
+      customer: { name: $("customerName").value.trim(), mobile: $("customerMobile").value.trim() },
+      biller_id: state.selectedBiller.id,
+    });
+    $("payBtn").disabled = false;
+    $("payBtn").textContent = "Pay";
+    if (!ok) return;
+    state.payment = body;
+    renderReceipt();
+    showScreen("receipt");
+  };
+
+  // ── Screen 4: receipt ─────────────────────────────────────────────────
+  function renderReceipt() {
+    const p = state.payment;
+    const success = p.status === "success";
+    $("receiptTop").innerHTML = `
+      <div class="receipt-icon ${success ? "success" : "failed"}">${success ? "&#10003;" : "&#10005;"}</div>
+      <div class="receipt-title">${success ? "Payment successful" : "Payment failed"}</div>
+      <div class="receipt-sub">${success ? "Your bill has been paid." : ((p.error && p.error.description) || "Something went wrong with this payment.")}</div>
+    `;
+    $("receiptDetails").innerHTML = `
+      <div class="receipt-line"><span class="k">Biller</span><span class="v">${(state.selectedBiller && (state.selectedBiller.alias_name || state.selectedBiller.name)) || p.biller_id || "—"}</span></div>
+      <div class="receipt-line"><span class="k">Amount</span><span class="v">&#8377;${rupees(p.bill_pay_amount)}</span></div>
+      <div class="receipt-line"><span class="k">Status</span><span class="v">${statusPill(p.status)}</span></div>
+      <div class="receipt-line"><span class="k">Transaction ID</span><span class="v">${p.gateway_transaction_id || p.id}</span></div>
+      <div class="receipt-line"><span class="k">Date</span><span class="v">${new Date(p.created_at).toLocaleString()}</span></div>
+    `;
+    $("coBrandRow").style.display = theme.co_branding ? "flex" : "none";
+    $("doneBtn").style.display = success ? "block" : "none";
+    $("complainBtn").style.display = success ? "none" : "block";
+  }
+  $("doneBtn").onclick = resetFlow;
+  $("complainBtn").onclick = () => {
+    $("complaintForm").style.display = "block";
+    $("complaintResult").style.display = "none";
+    showScreen("complaint");
+  };
+
+  // ── Screen 5: complaint ───────────────────────────────────────────────
+  $("submitComplaintBtn").onclick = async () => {
+    const p = state.payment;
+    $("submitComplaintBtn").disabled = true;
+    $("submitComplaintBtn").textContent = "Submitting…";
+    const { ok, body } = await api("POST", "/v1/bill_payments/complaints", {
+      biller_id: state.selectedBiller.id,
+      bill_payment_id: p.id,
+      complaint_type: $("complaintType").value,
+      complaint_description: $("complaintDescription").value.trim() || undefined,
+    });
+    $("submitComplaintBtn").disabled = false;
+    $("submitComplaintBtn").textContent = "Submit complaint";
+    if (!ok) return;
+    state.complaint = body;
+    renderComplaint();
+    $("complaintForm").style.display = "none";
+    $("complaintResult").style.display = "block";
+  };
+
+  function renderComplaint() {
+    const c = state.complaint;
+    $("complaintDetails").innerHTML = `
+      <div class="receipt-line"><span class="k">Complaint ID</span><span class="v">${c.id}</span></div>
+      <div class="receipt-line"><span class="k">Status</span><span class="v">${statusPill(c.status)}</span></div>
+      <div class="receipt-line"><span class="k">Gateway status</span><span class="v">${c.gateway_complaint_status || "—"}</span></div>
+      ${c.biller_remarks ? `<div class="receipt-line"><span class="k">Biller remarks</span><span class="v">${c.biller_remarks}</span></div>` : ""}
+    `;
+  }
+  $("pollComplaintBtn").onclick = async () => {
+    const { ok, body } = await api("GET", `/v1/bill_payments/complaints/${state.complaint.id}`);
+    if (!ok) return;
+    state.complaint = body;
+    renderComplaint();
+  };
+  $("complaintDoneBtn").onclick = resetFlow;
+
+  async function init() {
+    await applyOnboardingScope(); // no-op if no ?onboarding_id= was passed
+    await loadBillers();
+  }
+  init();
+</script>
+</body>
+</html>
