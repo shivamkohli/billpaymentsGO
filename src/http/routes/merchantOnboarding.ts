@@ -16,11 +16,14 @@ import { Router } from "express";
 import multer from "multer";
 import { listBillCategoryOptions } from "../../mapping/billCategories";
 import { createMerchantOnboarding, getMerchantOnboarding } from "../../orchestration/merchantOnboardingService";
+import { computeNrPotential } from "../../orchestration/nrPotentialService";
+import { scrapeWebsite } from "../../orchestration/websiteScraperService";
 import {
   DesignSystemPreferences,
   EntryPointLabel,
   EntryPointPlacement,
   EntryPointPreferences,
+  EstimatedScaleSignals,
   ExistingAppIntegrationDetails,
   IntegrationMode,
   MerchantOnboardingCreateInput,
@@ -51,6 +54,37 @@ export const merchantOnboardingRouter = Router();
 
 merchantOnboardingRouter.get("/categories", (_req, res) => {
   res.json({ categories: listBillCategoryOptions() });
+});
+
+// "Autofill from website" — best-effort scrape of a merchant's own site so
+// the onboarding form can be pre-filled from a single URL instead of asking
+// for business description / brand color / logo by hand. See
+// websiteScraperService.ts for what is and isn't derived, and why the scale
+// numbers are deliberately coarse tiers rather than invented figures.
+merchantOnboardingRouter.post("/scrape", async (req, res, next) => {
+  const url = typeof req.body?.url === "string" ? req.body.url.trim() : "";
+  if (!url) {
+    sendError(res, 400, {
+      code: "BAD_REQUEST_ERROR",
+      description: "url is required",
+      source: "business",
+      step: "validation",
+      reason: "INVALID_INPUT",
+    });
+    return;
+  }
+  try {
+    const result = await scrapeWebsite(url);
+    res.json(result);
+  } catch (err) {
+    sendError(res, 422, {
+      code: "GATEWAY_ERROR",
+      description: `Could not fetch or parse "${url}": ${(err as Error).message}`,
+      source: "gateway",
+      step: "website_scrape",
+      reason: "SCRAPE_FAILED",
+    });
+  }
 });
 
 function toStringArray(value: unknown): string[] {
@@ -173,22 +207,51 @@ merchantOnboardingRouter.post(
         }
       }
 
+      const designSystem = parseDesignSystem(body);
+      if (integrationMode === "existing_app_section" && !designSystem) {
+        // Embedding into an existing app means there's an existing look & feel
+        // to match — unlike a brand-new app, this is no longer a "nice to have".
+        sendError(res, 400, {
+          code: "BAD_REQUEST_ERROR",
+          description:
+            'When embedding within an existing app, provide at least one of: design_system_name, color_hex_codes, typography_guidelines, primary_button_style, component_libraries (see "5. Match your app\'s look & feel")',
+          source: "business",
+          step: "validation",
+          reason: "INVALID_INPUT",
+        });
+        return;
+      }
+
+      let estimatedScale: EstimatedScaleSignals | undefined;
+      if (typeof body.estimated_scale === "string" && body.estimated_scale.trim()) {
+        try {
+          estimatedScale = JSON.parse(body.estimated_scale) as EstimatedScaleSignals;
+        } catch {
+          // Malformed client-supplied JSON is not worth failing the whole submission over — just drop it.
+          estimatedScale = undefined;
+        }
+      }
+
       const input: MerchantOnboardingCreateInput = {
         business_description: businessDescription,
         categories,
         integration_mode: integrationMode,
         existing_app: existingApp,
         estimated_user_base: body.estimated_user_base ? Number(body.estimated_user_base) : undefined,
-        design_system: parseDesignSystem(body),
+        design_system: designSystem,
         entry_point: parseEntryPoint(body),
         receipt_co_branding: parseOptionalBoolean(body.receipt_co_branding),
+        source_url: (body.source_url as string) || undefined,
+        estimated_scale: estimatedScale,
       };
 
       const files = req.files as { [field: string]: Express.Multer.File[] } | undefined;
       const logoFile = files?.logo?.[0];
+      // Uploaded file wins over a scraped logo URL if the merchant replaces it after autofill.
+      const scrapedLogoUrl = typeof body.logo_url === "string" ? body.logo_url.trim() : "";
 
       const resource = createMerchantOnboarding(input, {
-        logo_url: logoFile ? `/uploads/${logoFile.filename}` : undefined,
+        logo_url: logoFile ? `/uploads/${logoFile.filename}` : scrapedLogoUrl || undefined,
         brand_color: (body.brand_color as string) || undefined,
       });
 
@@ -212,4 +275,23 @@ merchantOnboardingRouter.get("/:id", (req, res) => {
     return;
   }
   res.json(resource);
+});
+
+// "NR potential" — projected category-wise transactions/GMV/NR for this
+// merchant across their first year live, shown below branding on the
+// results screen. See orchestration/nrPotentialService.ts for the model
+// and mapping/npciCategoryStats.ts for the sourced reference data.
+merchantOnboardingRouter.get("/:id/nr_potential", (req, res) => {
+  const resource = getMerchantOnboarding(req.params.id);
+  if (!resource) {
+    sendError(res, 404, {
+      code: "BAD_REQUEST_ERROR",
+      description: `No onboarding submission found for id "${req.params.id}"`,
+      source: "business",
+      step: "lookup",
+      reason: "ONBOARDING_NOT_FOUND",
+    });
+    return;
+  }
+  res.json(computeNrPotential(resource));
 });

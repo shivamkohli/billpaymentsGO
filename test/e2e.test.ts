@@ -7,6 +7,14 @@
 process.env.BBPS_MODE = "mock";
 process.env.RZP_BILLPAY_KEY_ID = "rzp_test_billpay_key";
 process.env.RZP_BILLPAY_KEY_SECRET = "rzp_test_billpay_secret";
+// This e2e suite is meant to exercise the in-memory store fallback, not a
+// developer's real Supabase project. `dotenv` (loaded by src/config/env.ts)
+// only fills in env vars that are NOT already set, so blank these out here
+// before `../src/http/app` is required below — otherwise whatever is in the
+// local .env leaks into the test run and payment/bill_request tests hang
+// trying to reach a real Supabase project.
+process.env.SUPABASE_URL = "";
+process.env.SUPABASE_SERVICE_ROLE_KEY = "";
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 const request = require("supertest");

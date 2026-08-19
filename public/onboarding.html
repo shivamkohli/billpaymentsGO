@@ -63,6 +63,42 @@
   .status-pill.live_sample_billers { background: rgba(26,156,94,.12); color: var(--ok); }
   .status-pill.coming_soon { background: rgba(184,134,11,.12); color: var(--warn); }
   a.back { color: var(--muted); font-size: 12px; text-decoration: none; }
+  .scenario-toggle { display: flex; gap: 8px; margin-bottom: 14px; }
+  .scenario-toggle button {
+    flex: 1; padding: 9px 10px; border-radius: 7px; border: 1px solid var(--border); background: #fff;
+    color: #374151; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  }
+  .scenario-toggle button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .nr-hero {
+    display: flex; align-items: center; gap: 16px; padding: 18px 20px; margin-bottom: 14px;
+    border-radius: 10px; border: 1px solid var(--border);
+    background: linear-gradient(135deg, var(--accent-soft) 0%, #eafbf1 100%);
+  }
+  .nr-hero-icon { font-size: 32px; line-height: 1; }
+  .nr-hero-label { font-size: 11.5px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .4px; }
+  .nr-hero-value { font-size: 34px; font-weight: 800; color: var(--ok); line-height: 1.2; }
+  .nr-hero-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 18px; }
+  .kpi-card { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: #fafbfc; text-align: center; }
+  .kpi-card .kpi-label { font-size: 10.5px; color: var(--muted); margin-bottom: 4px; }
+  .kpi-card .kpi-value { font-size: 16px; font-weight: 700; }
+  .nr-cat-bar { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-top: 8px; background: #fff; }
+  .nr-cat-bar summary { cursor: pointer; list-style: none; }
+  .nr-cat-bar summary::-webkit-details-marker { display: none; }
+  .nr-cat-bar-head { display: flex; align-items: flex-start; gap: 12px; }
+  .nr-cat-icon { font-size: 20px; width: 26px; text-align: center; flex-shrink: 0; margin-top: 1px; }
+  .nr-cat-main { flex: 1; min-width: 0; }
+  .nr-cat-top-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .nr-cat-name { font-weight: 700; font-size: 13px; }
+  .nr-cat-gmv { font-weight: 700; font-size: 12.5px; color: var(--ok); white-space: nowrap; }
+  .nr-cat-track { height: 6px; border-radius: 4px; background: var(--border); margin-top: 7px; overflow: hidden; }
+  .nr-cat-fill { height: 100%; background: var(--accent); border-radius: 4px; }
+  .nr-cat-sub { display: flex; flex-wrap: wrap; gap: 14px; font-size: 11px; color: var(--muted); margin-top: 6px; }
+  .nr-month-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11.5px; }
+  .nr-month-table th, .nr-month-table td { padding: 5px 6px; text-align: right; border-bottom: 1px solid var(--border); }
+  .nr-month-table th:first-child, .nr-month-table td:first-child { text-align: left; }
+  .nr-month-table th { color: var(--muted); font-weight: 600; }
+  .nr-basis { color: var(--muted); font-size: 11px; margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -84,12 +120,33 @@
     </p>
 
     <form id="onboardingForm">
+      <div class="card" id="autofillCard" style="border-color: var(--accent);">
+        <h2>Autofill from your website <span class="hint" style="margin:0;">(optional, recommended)</span></h2>
+        <p class="desc">
+          Give us your website URL and we'll pull your brand name, logo, brand color and a business
+          description automatically — everything below stays editable, so fix anything we got wrong.
+        </p>
+        <div class="row" style="align-items: flex-start;">
+          <input type="url" id="websiteUrl" placeholder="https://www.yourbusiness.com" style="flex: 3;" />
+          <button class="primary" type="button" id="autofillBtn" style="flex: 1; margin-top: 0;">Autofill</button>
+        </div>
+        <div class="error-box" id="autofillErrorBox"></div>
+        <div id="autofillSummary" style="display:none; margin-top: 12px;">
+          <div class="result-card" style="display:block;">
+            <div id="autofillDetected" style="font-size: 12.5px;"></div>
+            <div id="autofillWarnings" class="hint" style="margin-top: 6px;"></div>
+            <div id="autofillScale" class="hint" style="margin-top: 8px;"></div>
+          </div>
+        </div>
+      </div>
+
       <div class="card">
         <h2>1. About your business</h2>
         <p class="desc">One line is enough — this helps us prioritise which billers to provision first.</p>
         <textarea id="businessDescription" placeholder="e.g. We are a small finance bank with 3 million users, primarily in tier-2/3 cities."></textarea>
         <label>Estimated user base (optional)</label>
         <input type="number" id="estimatedUserBase" placeholder="e.g. 3000000" />
+        <div class="hint" id="estimatedUserBaseHint" style="display:none;"></div>
       </div>
 
       <div class="card">
@@ -155,8 +212,8 @@
       </div>
 
       <div class="card">
-        <h2>5. Match your app's look &amp; feel <span class="hint" style="margin:0;">(optional)</span></h2>
-        <p class="desc">
+        <h2>5. Match your app's look &amp; feel <span class="hint" id="designSystemOptionalTag" style="margin:0;">(optional)</span></h2>
+        <p class="desc" id="designSystemDesc">
           Share your design system so the bill-payment screens feel native to your app, not bolted on.
           Everything here is optional — our design team will follow up on anything left blank.
         </p>
@@ -217,6 +274,31 @@
         <p class="desc">Confirming the design/placement/branding preferences we'll hand off to the integration team.</p>
         <div id="preferencesSummary" class="hint"></div>
       </div>
+      <div class="card" id="nrPotentialCard">
+        <h2>Year-1 revenue potential <span class="hint" style="margin:0;">(estimated)</span></h2>
+        <p class="desc">
+          Projected transactions, GMV and NR across the categories you selected, chained from your
+          estimated user base through category adoption and a 12-month ramp. Built from
+          <a href="https://www.bharat-connect.com/statistics/billers/" target="_blank" rel="noopener">Bharat
+          Connect's live network stats</a> plus rough industry-MAU estimates — see notes below for
+          exactly what's sourced vs. a placeholder.
+        </p>
+        <div id="nrPotentialUnavailable" class="hint" style="display:none;"></div>
+        <div id="nrPotentialBody" style="display:none;">
+          <div class="scenario-toggle" id="scenarioToggle"></div>
+          <div class="nr-hero">
+            <div class="nr-hero-icon">💰</div>
+            <div>
+              <div class="nr-hero-label">Projected Year-1 net revenue</div>
+              <div class="nr-hero-value" id="nrHeroValue">—</div>
+              <div class="nr-hero-sub" id="nrHeroSub"></div>
+            </div>
+          </div>
+          <div class="kpi-grid" id="nrKpiGrid"></div>
+          <div id="nrCategoryTable"></div>
+          <div class="nr-basis" id="nrNotes"></div>
+        </div>
+      </div>
       <div class="card">
         <h2>Preview your bill-payment experience</h2>
         <p class="desc">
@@ -235,6 +317,115 @@
 <script>
   const $ = (id) => document.getElementById(id);
   const selectedCategories = new Set();
+  const categoryChipsByKey = {}; // populated once loadCategories() resolves; lets autofill pre-select chips by key
+  // Populated by "Autofill" — carried through to submit alongside (or instead of) manual entry.
+  let scrapedLogoUrl = null;
+  let scrapedSourceUrl = null;
+  let scrapedEstimatedScale = null;
+
+  function selectCategory(key) {
+    const chip = categoryChipsByKey[key];
+    if (!chip || selectedCategories.has(key)) return; // unknown key, or merchant already picked it manually
+    selectedCategories.add(key);
+    chip.classList.add("selected");
+  }
+
+  function showAutofillError(message) {
+    const box = $("autofillErrorBox");
+    box.textContent = message;
+    box.style.display = "block";
+  }
+  function hideAutofillError() { $("autofillErrorBox").style.display = "none"; }
+
+  function scaleLine(fieldLabel, estimate) {
+    const basisText = estimate.basis && estimate.basis.length ? ` — ${estimate.basis.join("; ")}` : "";
+    return `<div><strong>${fieldLabel}:</strong> ${estimate.label}${basisText}</div>`;
+  }
+
+  // The "customers" tier is a coarse bucket (see websiteScraperService.ts),
+  // not a real number — this is just a representative midpoint per bucket
+  // so the numeric field isn't left empty. Always overridable, and always
+  // flagged as a rough estimate right under the field.
+  const TIER_TO_USER_BASE = { small: 10000, medium: 250000, large: 2000000, enterprise: 10000000 };
+
+  function applyEstimatedUserBase(customersEstimate) {
+    const hint = $("estimatedUserBaseHint");
+    if (!customersEstimate || customersEstimate.tier === "unknown" || !(customersEstimate.tier in TIER_TO_USER_BASE)) {
+      hint.style.display = "none";
+      return;
+    }
+    if (!$("estimatedUserBase").value) {
+      $("estimatedUserBase").value = TIER_TO_USER_BASE[customersEstimate.tier];
+    }
+    hint.textContent = `Prefilled from website signals (${customersEstimate.label}) — this is a rough estimate, edit it if you know the real number.`;
+    hint.style.display = "block";
+  }
+
+  $("autofillBtn").addEventListener("click", async () => {
+    hideAutofillError();
+    const url = $("websiteUrl").value.trim();
+    if (!url) return showAutofillError("Enter a website URL first.");
+
+    $("autofillBtn").disabled = true;
+    $("autofillBtn").textContent = "Fetching…";
+    try {
+      const res = await fetch("/v1/merchant_onboarding/scrape", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        showAutofillError((json.error && json.error.description) || "Could not fetch that website.");
+        return;
+      }
+
+      scrapedSourceUrl = json.source_url;
+      scrapedLogoUrl = json.logo_url || null;
+      scrapedEstimatedScale = json.estimated_scale || null;
+
+      // Prefill — never destroys anything the merchant already typed by hand, only fills blanks.
+      if (json.business_description && !$("businessDescription").value.trim()) {
+        $("businessDescription").value = json.business_description;
+      }
+      if (json.brand_color) $("brandColor").value = json.brand_color;
+      if (scrapedLogoUrl) {
+        const img = document.createElement("img");
+        img.src = scrapedLogoUrl;
+        img.onerror = () => { scrapedLogoUrl = null; }; // logo URL 404s (hotlink-blocked, etc.) — don't submit a broken link
+        const placeholder = $("logoPlaceholder");
+        placeholder.replaceWith(img);
+        img.id = "logoPlaceholder";
+      }
+
+      await categoriesLoadPromise; // chips must exist before we can pre-select any of them
+      const suggestedCategories = json.suggested_categories || [];
+      suggestedCategories.forEach((s) => selectCategory(s.category));
+
+      $("autofillSummary").style.display = "block";
+      $("autofillDetected").innerHTML = `Detected <strong>${json.brand_name || "your business"}</strong> from ${json.source_url}`;
+      $("autofillWarnings").innerHTML = (json.warnings || []).map((w) => `<div>⚠ ${w}</div>`).join("");
+      if (suggestedCategories.length) {
+        $("autofillDetected").innerHTML +=
+          '<div style="margin-top:6px;">Pre-selected categories below — deselect anything that doesn\'t fit:<ul style="margin:4px 0 0 18px; padding:0;">' +
+          suggestedCategories.map((s) => `<li>${s.category} — <span class="hint" style="margin:0;">${s.reason}</span></li>`).join("") +
+          "</ul></div>";
+      }
+      if (scrapedEstimatedScale) {
+        $("autofillScale").innerHTML =
+          '<div style="margin-bottom:4px;"><strong>Rough scale signals (estimated, low confidence — not real figures):</strong></div>' +
+          scaleLine("Customers", scrapedEstimatedScale.customers) +
+          scaleLine("App downloads", scrapedEstimatedScale.app_downloads) +
+          scaleLine("GMV", scrapedEstimatedScale.gmv);
+        applyEstimatedUserBase(scrapedEstimatedScale.customers);
+      }
+    } catch (err) {
+      showAutofillError("Network error: " + err.message);
+    } finally {
+      $("autofillBtn").disabled = false;
+      $("autofillBtn").textContent = "Autofill";
+    }
+  });
 
   async function loadCategories() {
     const res = await fetch("/v1/merchant_onboarding/categories");
@@ -254,6 +445,7 @@
           chip.classList.add("selected");
         }
       };
+      categoryChipsByKey[c.key] = chip;
       container.appendChild(chip);
     });
   }
@@ -283,6 +475,14 @@
     $("newAppCard").classList.toggle("selected", mode === "new_app");
     $("existingAppCard").classList.toggle("selected", mode === "existing_app_section");
     $("existingAppFields").style.display = mode === "existing_app_section" ? "block" : "none";
+
+    // Embedding into an existing app means there's an existing look & feel to
+    // match, so this stops being a "nice to have" — flip it to required.
+    const isExistingApp = mode === "existing_app_section";
+    $("designSystemOptionalTag").textContent = isExistingApp ? "(required)" : "(optional)";
+    $("designSystemDesc").textContent = isExistingApp
+      ? "Share your design system so the bill-payment screens feel native to your app, not bolted on. Since you're embedding into an existing app, fill in at least one field below."
+      : "Share your design system so the bill-payment screens feel native to your app, not bolted on. Everything here is optional — our design team will follow up on anything left blank.";
   }
   document.querySelectorAll('input[name=integrationMode]').forEach((el) => el.addEventListener("change", syncIntegrationMode));
   syncIntegrationMode();
@@ -306,13 +506,33 @@
     if (selectedCategories.size === 0) return showError("Select at least one bill-payment category.");
 
     const mode = document.querySelector('input[name=integrationMode]:checked').value;
+
+    if (mode === "existing_app_section") {
+      const hasAnyDesignSystemField =
+        $("designSystemName").value.trim() ||
+        $("colorHexCodes").value.trim() ||
+        $("typographyGuidelines").value.trim() ||
+        $("primaryButtonStyle").value.trim() ||
+        $("componentLibraries").value.trim();
+      if (!hasAnyDesignSystemField) {
+        return showError(
+          "Since you're embedding within your existing app, fill in at least one field under \"5. Match your app's look & feel\"."
+        );
+      }
+    }
     const fd = new FormData();
     fd.append("business_description", $("businessDescription").value.trim());
     selectedCategories.forEach((c) => fd.append("categories", c));
     fd.append("integration_mode", mode);
     if ($("estimatedUserBase").value) fd.append("estimated_user_base", $("estimatedUserBase").value);
     fd.append("brand_color", $("brandColor").value);
-    if ($("logoInput").files[0]) fd.append("logo", $("logoInput").files[0]);
+    if ($("logoInput").files[0]) {
+      fd.append("logo", $("logoInput").files[0]);
+    } else if (scrapedLogoUrl) {
+      fd.append("logo_url", scrapedLogoUrl);
+    }
+    if (scrapedSourceUrl) fd.append("source_url", scrapedSourceUrl);
+    if (scrapedEstimatedScale) fd.append("estimated_scale", JSON.stringify(scrapedEstimatedScale));
 
     if (mode === "existing_app_section") {
       fd.append("deep_link", $("deepLink").value);
@@ -322,7 +542,7 @@
       fd.append("ios_bundle_id", $("iosBundleId").value);
     }
 
-    // Design system (all optional)
+    // Design system (optional for a new standalone app; required — enforced above — for existing_app_section)
     if ($("designSystemName").value) fd.append("design_system_name", $("designSystemName").value);
     $("colorHexCodes").value.split(",").map((s) => s.trim()).filter(Boolean).forEach((hex) => fd.append("color_hex_codes", hex));
     if ($("typographyGuidelines").value) fd.append("typography_guidelines", $("typographyGuidelines").value);
@@ -398,14 +618,171 @@
     if (typeof resource.receipt_co_branding === "boolean") {
       lines.push(`Receipt co-branding: ${resource.receipt_co_branding ? "merchant logo + BBPS/Bharat Connect logo" : "merchant branding only"}`);
     }
+    if (resource.source_url) lines.push(`Autofilled from: ${resource.source_url}`);
+    if (resource.estimated_scale) {
+      const es = resource.estimated_scale;
+      lines.push(`Estimated customers: ${es.customers.label}`);
+      lines.push(`Estimated app downloads: ${es.app_downloads.label}`);
+      lines.push(`Estimated GMV: ${es.gmv.label}`);
+    }
     $("preferencesSummary").innerHTML = lines.length
       ? lines.map((l) => `<div>${l}</div>`).join("")
       : "No design/placement preferences were provided — our team will propose defaults.";
 
     $("resultsSection").scrollIntoView({ behavior: "smooth" });
+    fetchAndRenderNrPotential(resource.id);
   }
 
-  loadCategories();
+  // ---- Year-1 revenue potential ----
+  let currentNrPotential = null;
+  let currentScenario = "base";
+
+  // Rounded, Indian-shorthand formatting for the infographic — precision beyond
+  // this (e.g. "19,55,629" or "₹2,383.99 Cr") is false confidence for numbers
+  // that are themselves rough projections, so everything here rounds off to
+  // one decimal at most and abbreviates lakhs/crores like a headline figure.
+  function trimOneDecimal(v) {
+    return (Math.round(v * 10) / 10).toFixed(1).replace(/\.0$/, "");
+  }
+  function fmtAbbrev(n) {
+    n = Math.round(n);
+    const sign = n < 0 ? "-" : "";
+    const abs = Math.abs(n);
+    if (abs >= 1e7) return sign + trimOneDecimal(abs / 1e7) + " Cr";
+    if (abs >= 1e5) return sign + trimOneDecimal(abs / 1e5) + " L";
+    if (abs >= 1e3) return sign + trimOneDecimal(abs / 1e3) + " K";
+    return sign + abs.toLocaleString("en-IN");
+  }
+  function fmtCount(n) {
+    return fmtAbbrev(n);
+  }
+  function fmtRupees(rupees) {
+    return "₹" + fmtAbbrev(rupees);
+  }
+  function fmtCrValue(crores) {
+    const abs = Math.abs(crores);
+    let val;
+    if (abs >= 100) val = Math.round(crores).toLocaleString("en-IN");
+    else if (abs >= 1) val = trimOneDecimal(crores);
+    else val = (Math.round(crores * 100) / 100).toString();
+    return "₹" + val + " Cr";
+  }
+  function fmtCr(rupees) {
+    return fmtCrValue(rupees / 1e7);
+  }
+
+  // Best-effort visual accent per category — purely decorative, no bearing on the numbers.
+  const CATEGORY_ICONS = {
+    Electricity: "⚡", Water: "💧", Gas: "🔥", "LPG Gas": "🛢️", DTH: "📺",
+    "Mobile Postpaid": "📱", "Mobile Prepaid": "📱", Broadband: "🌐", "Credit Card": "💳",
+    "Loan Repayment": "🏦", Insurance: "🛡️", "Tax Payment": "🏛️", "Housing Society": "🏢",
+    "Education Fees": "🎓", "Subscription Fees": "🔔", "Club and Association": "🎟️",
+    Hospital: "🏥", NCC: "📄", "Recurring Deposit": "📈", FASTag: "🚗",
+  };
+
+  async function fetchAndRenderNrPotential(onboardingId) {
+    $("nrPotentialCard").style.display = "block";
+    $("nrPotentialUnavailable").style.display = "none";
+    $("nrPotentialBody").style.display = "none";
+    try {
+      const res = await fetch(`/v1/merchant_onboarding/${onboardingId}/nr_potential`);
+      const json = await res.json();
+      if (!res.ok || !json.available) {
+        currentNrPotential = null;
+        $("nrPotentialUnavailable").textContent =
+          (json && json.message) || "Could not compute a revenue potential estimate for this submission.";
+        $("nrPotentialUnavailable").style.display = "block";
+        return;
+      }
+      currentNrPotential = json;
+      currentScenario = "base";
+      const toggle = $("scenarioToggle");
+      toggle.innerHTML = "";
+      Object.values(json.scenarios).forEach((s) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = s.label;
+        btn.className = s.scenario === currentScenario ? "active" : "";
+        btn.addEventListener("click", () => {
+          currentScenario = s.scenario;
+          Array.from(toggle.children).forEach((c) => c.classList.toggle("active", c === btn));
+          renderNrScenario();
+        });
+        toggle.appendChild(btn);
+      });
+      $("nrNotes").innerHTML = json.notes.map((n) => `<div>${n}</div>`).join("");
+      $("nrPotentialBody").style.display = "block";
+      renderNrScenario();
+    } catch (err) {
+      currentNrPotential = null;
+      $("nrPotentialUnavailable").textContent = "Network error while computing revenue potential: " + err.message;
+      $("nrPotentialUnavailable").style.display = "block";
+    }
+  }
+
+  function renderNrScenario() {
+    if (!currentNrPotential) return;
+    const s = currentNrPotential.scenarios[currentScenario];
+
+    $("nrHeroValue").textContent = fmtCr(s.year1_nr);
+    $("nrHeroSub").textContent =
+      `Exit run-rate ${fmtCr(s.exit_monthly_nr)}/month · NR = 0.3% of GMV · ${currentNrPotential.scenarios[currentScenario].label} scenario`;
+
+    $("nrKpiGrid").innerHTML = [
+      ["Year-1 active users", fmtCount(s.year1_active_users)],
+      ["Year-1 transactions", fmtCount(s.year1_transactions)],
+      ["Year-1 bill-pay GMV", fmtCr(s.year1_gmv)],
+      ["Exit monthly GMV (run-rate)", fmtCr(s.exit_monthly_gmv)],
+    ]
+      .map(
+        ([label, value]) =>
+          `<div class="kpi-card"><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div></div>`
+      )
+      .join("");
+
+    const container = $("nrCategoryTable");
+    container.innerHTML = "";
+    const maxGmv = Math.max(...s.categories.map((c) => c.fy1_totals.value), 1);
+    s.categories
+      .slice()
+      .sort((a, b) => b.fy1_totals.value - a.fy1_totals.value)
+      .forEach((c) => {
+        const details = document.createElement("details");
+        details.className = "nr-cat-bar";
+        const barPct = Math.max((c.fy1_totals.value / maxGmv) * 100, 2);
+        const icon = CATEGORY_ICONS[c.category] || "🧾";
+        const monthRows = c.months
+          .map(
+            (m) =>
+              `<tr><td>M${m.month}</td><td>${m.ramp_pct.toFixed(0)}%</td><td>${fmtCount(m.users)}</td><td>${fmtCount(
+                m.transactions
+              )}</td><td>${fmtRupees(m.value)}</td></tr>`
+          )
+          .join("");
+        details.innerHTML =
+          `<summary><div class="nr-cat-bar-head">` +
+          `<div class="nr-cat-icon">${icon}</div>` +
+          `<div class="nr-cat-main">` +
+          `<div class="nr-cat-top-row"><span class="nr-cat-name">${c.label}</span><span class="nr-cat-gmv">${fmtCr(
+            c.fy1_totals.value
+          )} FY1 GMV</span></div>` +
+          `<div class="nr-cat-track"><div class="nr-cat-fill" style="width:${barPct}%"></div></div>` +
+          `<div class="nr-cat-sub">` +
+          `<span>${fmtCount(c.merchant_category_mau_potential)} potential users</span>` +
+          `<span>${fmtCount(c.fy1_totals.transactions)} FY1 txns</span>` +
+          `<span>Penetration ${(c.category_penetration * 100).toFixed(0)}%</span>` +
+          `<span>ATV ₹${fmtAbbrev(c.avg_transaction_value)}</span>` +
+          `</div></div></div></summary>` +
+          `<table class="nr-month-table"><thead><tr><th>Month</th><th>Ramp</th><th>Users</th><th>Transactions</th><th>Value</th></tr></thead>` +
+          `<tbody>${monthRows}</tbody></table>` +
+          `<div class="nr-basis">NPCI reference: ${fmtCrValue(c.npci_monthly_value_cr)} / ${fmtAbbrev(
+            c.npci_monthly_volume_mn * 1e6
+          )} txns per month (as of ${c.npci_as_of}). Industry MAU basis: ${c.mau_basis}</div>`;
+        container.appendChild(details);
+      });
+  }
+
+  const categoriesLoadPromise = loadCategories();
 </script>
 </body>
 </html>

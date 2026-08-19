@@ -67,6 +67,8 @@ export function createMerchantOnboarding(
     design_system: input.design_system,
     entry_point: input.entry_point,
     receipt_co_branding: input.receipt_co_branding,
+    source_url: input.source_url,
+    estimated_scale: input.estimated_scale,
     branding,
     curated_offering: computeCuratedOffering(input.categories),
     created_at: createdAt,

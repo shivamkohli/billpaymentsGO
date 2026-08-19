@@ -84,6 +84,60 @@ export interface MerchantOnboardingCreateInput {
   entry_point?: EntryPointPreferences;
   /** Merchant logo + BBPS/Bharat Connect logo shown together on the digital confirmation/receipt screen. */
   receipt_co_branding?: boolean;
+  /** Website the merchant used with "Autofill from website" — set only when that path was used. */
+  source_url?: string;
+  /** Rough, low-confidence scale signals derived from the website scrape — see `websiteScraperService.ts`. */
+  estimated_scale?: EstimatedScaleSignals;
+}
+
+/**
+ * Coarse, non-authoritative size signal used only because there is no
+ * reliable public data source for an arbitrary merchant's real customer
+ * count / app downloads / GMV. Always surfaced to the merchant as
+ * "estimated" and always carries `basis` so it's clear this is a guess
+ * derived from a handful of page signals, not a real number — see
+ * `websiteScraperService.ts` for how it's computed.
+ */
+export type ScaleTier = "unknown" | "small" | "medium" | "large" | "enterprise";
+
+export interface ScaleEstimate {
+  tier: ScaleTier;
+  /** Human-readable, always includes an "(estimated)" qualifier — see websiteScraperService.ts. */
+  label: string;
+  /** The specific signals that drove this tier, e.g. "Found both App Store and Play Store links". Empty when tier is "unknown". */
+  basis: string[];
+}
+
+export interface EstimatedScaleSignals {
+  customers: ScaleEstimate;
+  app_downloads: ScaleEstimate;
+  gmv: ScaleEstimate;
+}
+
+/**
+ * A bill-payment category (key from `mapping/billCategories.ts`) suggested
+ * for pre-selection, plus the literal evidence for it — so "we picked this
+ * for you" is always checkable, not a black box. See
+ * `websiteScraperService.ts#inferCategories`.
+ */
+export interface CategorySuggestion {
+  category: string;
+  reason: string;
+}
+
+/** Result of scraping a merchant's website — feeds the onboarding form's autofill, never submitted verbatim without the merchant seeing/editing it first. */
+export interface WebsiteScrapeResult {
+  source_url: string;
+  brand_name?: string;
+  logo_url?: string;
+  /** Hex color, e.g. "#0f6fde". */
+  brand_color?: string;
+  business_description?: string;
+  estimated_scale: EstimatedScaleSignals;
+  /** Bill-payment categories worth pre-selecting, each with the evidence that suggested it. Merchant can freely add/remove. */
+  suggested_categories: CategorySuggestion[];
+  /** Non-fatal issues encountered while scraping (e.g. "Could not fetch favicon"), surfaced to the merchant for transparency. */
+  warnings: string[];
 }
 
 export type CategoryCoverageStatus = "live_sample_billers" | "coming_soon";
@@ -102,6 +156,77 @@ export interface CuratedOfferingPreview {
   recommended_next_step: string;
 }
 
+/**
+ * "NR (Net Revenue) potential" projection shown on the onboarding results
+ * screen, below branding — see `orchestration/nrPotentialService.ts` for
+ * the full model and `mapping/npciCategoryStats.ts` for the sourced
+ * reference data it runs on. Chain: merchant active users -> category
+ * adoption (penetration x 12-month ramp) -> monthly transacting users ->
+ * transactions -> GMV -> NR (0.3% of GMV).
+ */
+export interface NrPotentialMonthProjection {
+  /** 1-12, month 1 = first month live. */
+  month: number;
+  /** Effective % of the category's potential users activated by this month, for this scenario (0-100). */
+  ramp_pct: number;
+  users: number;
+  transactions: number;
+  value: number;
+}
+
+export interface NrPotentialCategoryProjection {
+  category: string;
+  label: string;
+  npci_monthly_value_cr: number;
+  npci_monthly_volume_mn: number;
+  npci_as_of: string;
+  avg_transaction_value: number;
+  industry_category_mau_mn: number;
+  mau_basis: string;
+  /** industry_category_mau_mn / industry overall digital MAU, capped at 1. */
+  category_penetration: number;
+  industry_transactions_per_user_per_month: number;
+  /** Steady-state ceiling for this scenario: merchant_active_users x penetration x affinity_factor. */
+  merchant_category_mau_potential: number;
+  months: NrPotentialMonthProjection[];
+  fy1_totals: {
+    exit_month_users: number;
+    transactions: number;
+    value: number;
+  };
+}
+
+export type NrPotentialScenarioKey = "conservative" | "base" | "upside";
+
+export interface NrPotentialScenarioResult {
+  scenario: NrPotentialScenarioKey;
+  label: string;
+  ramp_multiplier: number;
+  affinity_factor: number;
+  year1_active_users: number;
+  year1_transactions: number;
+  year1_gmv: number;
+  exit_monthly_gmv: number;
+  year1_nr: number;
+  exit_monthly_nr: number;
+  categories: NrPotentialCategoryProjection[];
+}
+
+export interface NrPotentialResult {
+  entity: "bill_payment.nr_potential";
+  merchant_onboarding_id: string;
+  /** false when there isn't enough input (no estimated_user_base, or no categories) to project anything. */
+  available: boolean;
+  message?: string;
+  merchant_active_users?: number;
+  industry_overall_digital_mau_mn: number;
+  industry_overall_digital_mau_basis: string;
+  ramp_curve_pct: number[];
+  nr_rate_of_gmv: number;
+  scenarios?: Record<NrPotentialScenarioKey, NrPotentialScenarioResult>;
+  notes: string[];
+}
+
 export interface MerchantOnboardingResource {
   id: string;
   entity: "bill_payment.merchant_onboarding";
@@ -113,6 +238,8 @@ export interface MerchantOnboardingResource {
   design_system?: DesignSystemPreferences;
   entry_point?: EntryPointPreferences;
   receipt_co_branding?: boolean;
+  source_url?: string;
+  estimated_scale?: EstimatedScaleSignals;
   branding: MerchantBranding;
   curated_offering: CuratedOfferingPreview;
   created_at: number;
