@@ -8,6 +8,7 @@ import { paymentsRouter } from "./routes/payments";
 import { complaintsRouter } from "./routes/complaints";
 import { merchantOnboardingRouter } from "./routes/merchantOnboarding";
 import { errorHandler, notFoundHandler } from "./errors";
+import { STAGING_SANDBOX_SERVABLE_BILLER_IDS } from "../gateway/stagingSandboxBbpcuClient";
 
 /**
  * `public/` is a tiny, dependency-free HTML+JS demo UI (forms for
@@ -23,7 +24,18 @@ export function createApp(): Express {
   app.use(express.json());
 
   app.get("/health", (_req, res) => {
-    res.json({ status: "ok", bbps_mode: config.bbpsMode });
+    res.json({
+      status: "ok",
+      bbps_mode: config.bbpsMode,
+      // Which locally-registered biller_ids the real staging sandbox can
+      // actually service right now (empty outside BBPS_MODE=staging). This
+      // is deliberately NOT used to filter `GET /billers` itself — that
+      // endpoint is shared by flows (onboarding-scoped widget preview,
+      // onboarding.html's curated_offering) that need the full local
+      // catalogue. Consumers that want to warn/restrict on a per-picker
+      // basis (see public/index.html) should filter client-side using this.
+      staging_servable_biller_ids: config.bbpsMode === "staging" ? STAGING_SANDBOX_SERVABLE_BILLER_IDS : [],
+    });
   });
 
   app.use("/v1/bill_payments", basicAuth, billersRouter);

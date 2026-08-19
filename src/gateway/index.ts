@@ -8,10 +8,11 @@
  */
 
 import { config } from "../config/env";
-import { getCredentialsProvider } from "../config/credentials";
+import { getCredentialsProvider, getStagingCredentials } from "../config/credentials";
 import { BbpcuClient } from "./BbpcuClient";
 import { MockBbpcuClient } from "./mockBbpcuClient";
 import { NpciHttpBbpcuClient } from "./npciHttpBbpcuClient";
+import { StagingSandboxBbpcuClient } from "./stagingSandboxBbpcuClient";
 
 let cached: BbpcuClient | undefined;
 
@@ -20,6 +21,19 @@ export function getBbpcuClient(): BbpcuClient {
 
   if (config.bbpsMode === "mock") {
     cached = new MockBbpcuClient();
+    return cached;
+  }
+
+  if (config.bbpsMode === "staging") {
+    const stagingCreds = getStagingCredentials();
+    if (!stagingCreds) {
+      throw new Error(
+        "BBPS_MODE=staging but no staging sandbox credentials are configured. " +
+          "Populate BBPS_STAGING_KEY_ID/BBPS_STAGING_KEY_SECRET/BBPS_STAGING_BASE_URL " +
+          "in .env, or set BBPS_MODE=mock to use the local mock responder."
+      );
+    }
+    cached = new StagingSandboxBbpcuClient(stagingCreds);
     return cached;
   }
 

@@ -24,6 +24,15 @@ billersRouter.get("/billers/:id", (req, res) => {
 });
 
 billersRouter.get("/billers", (req, res) => {
+  // Deliberately NOT filtered by BBPS_MODE: this endpoint is the shared local
+  // biller catalogue, consumed by more than just the API demo's picker —
+  // billpay-widget.html's onboarding-scoped preview and onboarding.html's own
+  // curated_offering computation both intersect their own biller lists
+  // against *all* of these results. Narrowing this list when
+  // BBPS_MODE=staging previously broke those flows (a merchant's curated
+  // preview showing almost nothing). See `GET /health` for the
+  // staging-servable subset, and `public/index.html` for where that's used
+  // to scope just the demo's own biller picker.
   const category = typeof req.query.category === "string" ? req.query.category : undefined;
   const all = listBillers();
   const items = category ? all.filter((b) => b.category === category) : all;

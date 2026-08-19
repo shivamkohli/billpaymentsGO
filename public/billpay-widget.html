@@ -85,6 +85,23 @@
     background: none; border: none; color: var(--bbps-primary-text); cursor: pointer; font-size: 13px;
     opacity: 0.9; padding: 4px;
   }
+  /* Bharat Connect network mark — shown top-right per the media kit's
+     placement rules for "Biller Selection / Bill Fetch / Bill Payment /
+     Complaint" screens (search, details, bill, complaint here). Rendered on
+     its own white chip rather than transparently on the header, since the
+     header's background is a merchant-controlled `--bbps-primary` colour
+     that this fixed multi-colour logo can't be guaranteed to contrast with.
+     The kit's placement rule specifies a minimum 32px logo height for
+     full-size app screens; this demo's widget chrome is intentionally
+     compact (~440px wide), so the mark is scaled down proportionally here —
+     swap in the full 32px+ sizing for a non-embedded, full-screen surface. */
+  .bc-network-badge {
+    display: flex; align-items: center; flex-shrink: 0; background: #fff;
+    border-radius: 6px; padding: 3px 7px; margin-left: 4px;
+  }
+  .bc-network-badge img { height: 16px; display: block; }
+  .b-assured-row { display: flex; justify-content: flex-start; margin-bottom: 14px; }
+  .b-assured-row img { height: 34px; display: block; }
   .widget-body { padding: 16px; }
   .screen { display: none; }
   .screen.active { display: block; }
@@ -213,6 +230,9 @@
     <div class="widget-header">
       <span class="logo-badge" id="brandBadge">₩</span>
       <span class="title" id="headerTitle">Bill Payments</span>
+      <span class="bc-network-badge" id="networkBadge" title="Powered by Bharat Connect">
+        <img src="/logos/bharat-connect/bharat-connect-horizontal.svg" alt="Bharat Connect" />
+      </span>
       <button class="back-btn" id="backBtn" style="display:none;">&larr; Back</button>
       <button class="reset-btn" id="resetBtn" title="Start over">&#x21bb;</button>
     </div>
@@ -279,6 +299,19 @@
 
       <!-- Screen 4: receipt -->
       <div class="screen" id="screen-receipt">
+        <!-- B Assured trust mark — the media kit's Stage 3 (Payment
+             Confirmation/Receipt) mark, distinct from the Bharat Connect
+             network logo shown on earlier screens. Placed top-left: the
+             kit's own bundled bbps_approval_portal.html mockup puts this
+             top-right uniformly, but the separately-issued Partner
+             Guidelines PDF specifies top-left for digital/in-app receipts
+             (top-right is for *paper* receipts) — this is an in-app receipt,
+             so following the PDF here. Unrelated to the merchant's optional
+             "co-branding" row further down (BHARAT CONNECT wordmark +
+             merchant logo), which is a separate opt-in setting. -->
+        <div class="b-assured-row" id="bAssuredRow">
+          <img src="/logos/bharat-connect/b-assured.svg" alt="B Assured — verified by Bharat Connect" />
+        </div>
         <div id="receiptTop"></div>
         <div class="receipt-card" id="receiptDetails"></div>
         <div class="co-brand-row" id="coBrandRow" style="display:none;">
@@ -443,6 +476,10 @@
     currentScreen = name;
     $("headerTitle").textContent = screenTitles[name] || "Bill Payments";
     $("backBtn").style.display = screenHistory.length > 0 ? "inline-block" : "none";
+    // Bharat Connect network mark is the Stage 2 (biller selection / bill
+    // fetch / bill payment / complaint) mark; the receipt screen carries the
+    // Stage 3 B Assured mark instead (see #bAssuredRow), so don't show both.
+    $("networkBadge").style.display = name === "receipt" ? "none" : "flex";
     hideApiError();
   }
   $("backBtn").onclick = () => {

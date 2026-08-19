@@ -119,6 +119,33 @@ export const SAMPLE_BILLERS: BillerResource[] = [
     ],
   },
 
+  // --- Razorpay BBPS sandbox (stage) biller — the one biller the real staging
+  // gateway (BBPS_MODE=staging, src/gateway/stagingSandboxBbpcuClient.ts) can
+  // actually serve real-time responses for. `id` matches the sandbox's
+  // `gateway_biller_id`, since getBillerById()/decideBillRequestKind() key off
+  // `gateway_biller_id || biller_id` from the merchant request, not the
+  // sandbox's separately-prefixed public id (`biller_SBOXSANDBOX001`). ---
+  {
+    id: "SBOX00000NATDF",
+    name: "Sandbox Biller (Mock)",
+    alias_name: "Sandbox Mock",
+    category: "Credit Card",
+    mode: "ONLINE",
+    accepts_adhoc: false,
+    fetch_requirement: "MANDATORY",
+    support_bill_validation: "NOT_SUPPORTED",
+    payment_amount_exactness: "Exact",
+    payment_modes: ["UPI", "Wallet"],
+    customer_params: [
+      {
+        name: "Consumer Number",
+        label: "Consumer Number",
+        data_type: "ALPHANUMERIC",
+        optional: false,
+      },
+    ],
+  },
+
   // --- Ingested from NPCI Biller MDM export (Electricity / Credit Card / FASTag) ---
   // Sourced from the merchant onboarding team's biller-list spreadsheet + biller-logo
   // Drive folder; each entry below was matched by exact BBPS biller ID between the two

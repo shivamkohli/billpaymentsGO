@@ -1,6 +1,6 @@
 import "dotenv/config";
 
-export type BbpsMode = "mock" | "live";
+export type BbpsMode = "mock" | "live" | "staging";
 
 export interface AppConfig {
   port: number;
@@ -13,7 +13,9 @@ export interface AppConfig {
 
 function resolveBbpsMode(): BbpsMode {
   const raw = (process.env.BBPS_MODE || "mock").trim().toLowerCase();
-  return raw === "live" ? "live" : "mock";
+  if (raw === "live") return "live";
+  if (raw === "staging") return "staging";
+  return "mock";
 }
 
 export const config: AppConfig = {

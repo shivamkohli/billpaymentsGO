@@ -42,6 +42,31 @@ export interface CredentialsProvider {
   isConfigured(): boolean;
 }
 
+/**
+ * Credentials for Razorpay's own BBPS *sandbox* (stage) — a deterministic
+ * mock-gateway environment reachable over plain HTTP Basic Auth + JSON,
+ * documented in the "Razorpay BBPS Sandbox — Merchant Integration Guide".
+ * This is a different downstream than `BbpsDownstreamCredentials` above:
+ * that one is the real NPCI/BBPCU XML+mTLS connection (still unissued);
+ * this one is Razorpay's own stage gateway used by `BBPS_MODE=staging`
+ * (see `src/gateway/stagingSandboxBbpcuClient.ts`) to serve real-time
+ * (if simulated) responses instead of `MockBbpcuClient`'s local fake data.
+ */
+export interface StagingSandboxCredentials {
+  keyId: string;
+  keySecret: string;
+  baseUrl: string;
+}
+
+/** Returns null when BBPS_STAGING_* env vars are not fully populated. */
+export function getStagingCredentials(): StagingSandboxCredentials | null {
+  const keyId = process.env.BBPS_STAGING_KEY_ID?.trim();
+  const keySecret = process.env.BBPS_STAGING_KEY_SECRET?.trim();
+  const baseUrl = process.env.BBPS_STAGING_BASE_URL?.trim();
+  if (!keyId || !keySecret || !baseUrl) return null;
+  return { keyId, keySecret, baseUrl };
+}
+
 const REQUIRED_ENV_KEYS = [
   "BBPS_BBPOU_ID",
   "BBPS_ORIG_INST",
