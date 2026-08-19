@@ -1,7 +1,8 @@
 /**
  * Orchestrates `POST/GET /v1/bill_payments/bill_requests` for merchant
  * partners: mapping-layer translate -> sign -> gateway (mock or live) ->
- * mapping-layer translate back -> in-memory store.
+ * mapping-layer translate back -> persisted store (Supabase when configured,
+ * else in-memory — see src/store/billRequestStore.ts).
  *
  * This is the seam described in the original ask — "once you have access
  * to BBPS API key and secret, you can incorporate that in APIs orchestrated
@@ -19,10 +20,8 @@ import { decideBillRequestKind, getBillerById } from "../mapping/billerRegistry"
 import { billRequestInputToNpciRequest, npciResponseToBillRequestResource } from "../mapping/billRequest.mapper";
 import { gatewayErrorFromException } from "../mapping/common";
 import { generateEntityId } from "../ids/generator";
-import { MemoryStore } from "../store/memoryStore";
+import { getBillRequestById, listBillRequestsByCustomerMobile, saveBillRequest } from "../store/billRequestStore";
 import { BillRequestCreateInput, BillRequestResource } from "../types/merchant";
-
-const store = new MemoryStore<BillRequestResource>();
 
 /** NPCI bill-fetch results are only valid for a short window before the customer must re-fetch. */
 const BILL_REQUEST_TTL_MS = 15 * 60 * 1000;
@@ -65,7 +64,7 @@ export async function createBillRequest(input: BillRequestCreateInput): Promise<
       step: "bill_fetch",
       reason: "BILLER_NOT_FOUND",
     });
-    store.set(id, resource, BILL_REQUEST_TTL_MS);
+    await saveBillRequest(resource, BILL_REQUEST_TTL_MS);
     return resource;
   }
 
@@ -83,7 +82,7 @@ export async function createBillRequest(input: BillRequestCreateInput): Promise<
       bills: [],
       data: { adhoc_only: true, note: "Biller does not support fetch or validation; proceed directly to payment." },
     };
-    store.set(id, resource, BILL_REQUEST_TTL_MS);
+    await saveBillRequest(resource, BILL_REQUEST_TTL_MS);
     return resource;
   }
 
@@ -103,10 +102,15 @@ export async function createBillRequest(input: BillRequestCreateInput): Promise<
   } catch (err) {
     resource = failedResource(id, input, createdAt, gatewayErrorFromException(err, "bill_fetch"));
   }
-  store.set(id, resource, BILL_REQUEST_TTL_MS);
+  await saveBillRequest(resource, BILL_REQUEST_TTL_MS);
   return resource;
 }
 
-export function getBillRequest(id: string): BillRequestResource | undefined {
-  return store.get(id);
+export async function getBillRequest(id: string): Promise<BillRequestResource | undefined> {
+  return getBillRequestById(id);
+}
+
+/** Every bill this customer has fetched — backs GET /v1/bill_payments/bill_requests?customer_mobile=. */
+export async function listBillRequestsForCustomer(mobile: string): Promise<BillRequestResource[]> {
+  return listBillRequestsByCustomerMobile(mobile);
 }

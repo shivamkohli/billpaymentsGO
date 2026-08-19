@@ -1,12 +1,17 @@
 /**
- * In-memory entity store standing in for a real DB (Postgres/Redis) for the
- * hackathon build. Every orchestration service (`billRequestService.ts`,
- * `paymentService.ts`, `complaintService.ts`) owns one instance of this,
- * keyed by the merchant-facing entity id (`billreq_...`, `pay_...`,
- * `complaint_...`).
+ * In-memory entity store. Originally stood in for a real DB everywhere;
+ * bill_requests and payments have since moved to Supabase-backed persistence
+ * (src/store/billRequestStore.ts, src/store/paymentStore.ts) — this class is
+ * now only used as: (a) their automatic fallback when
+ * SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY aren't set, and (b) directly by
+ * `complaintService.ts`, which hasn't been migrated (not asked for yet —
+ * complaints are comparatively low-volume and don't need the
+ * per-customer-mobile querying bill_requests/payments do).
  *
- * Swapping this for a real store later is a one-file-per-service change:
- * keep the same get/set/update signature.
+ * Keyed by the merchant-facing entity id (`billreq_...`, `pay_...`,
+ * `complaint_...`). Swapping a remaining consumer to a real store is a
+ * one-file change: keep the same get/set/update signature (see
+ * billRequestStore.ts/paymentStore.ts for the pattern).
  */
 export class MemoryStore<T> {
   private readonly data = new Map<string, { value: T; expiresAt?: number }>();

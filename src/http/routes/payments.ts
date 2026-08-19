@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { createPayment, getPayment } from "../../orchestration/paymentService";
+import { createPayment, getPayment, listPaymentsForCustomer } from "../../orchestration/paymentService";
 import { PaymentCreateInput } from "../../types/merchant";
 import { sendError } from "../errors";
 
@@ -38,17 +38,43 @@ paymentsRouter.post("/payments", async (req, res, next) => {
   }
 });
 
-paymentsRouter.get("/payments/:id", (req, res) => {
-  const resource = getPayment(req.params.id);
-  if (!resource) {
-    sendError(res, 404, {
+// Every payment this customer has made — same shape/reasoning as
+// GET /bill_requests?customer_mobile=, see billRequests.ts.
+paymentsRouter.get("/payments", async (req, res, next) => {
+  const mobile = typeof req.query.customer_mobile === "string" ? req.query.customer_mobile : undefined;
+  if (!mobile) {
+    sendError(res, 400, {
       code: "BAD_REQUEST_ERROR",
-      description: `No payment found for id "${req.params.id}"`,
+      description: "customer_mobile query param is required",
       source: "business",
-      step: "lookup",
-      reason: "PAYMENT_NOT_FOUND",
+      step: "validation",
+      reason: "INVALID_INPUT",
     });
     return;
   }
-  res.json(resource);
+  try {
+    const items = await listPaymentsForCustomer(mobile);
+    res.json({ entity: "collection", count: items.length, items });
+  } catch (err) {
+    next(err);
+  }
+});
+
+paymentsRouter.get("/payments/:id", async (req, res, next) => {
+  try {
+    const resource = await getPayment(req.params.id);
+    if (!resource) {
+      sendError(res, 404, {
+        code: "BAD_REQUEST_ERROR",
+        description: `No payment found for id "${req.params.id}"`,
+        source: "business",
+        step: "lookup",
+        reason: "PAYMENT_NOT_FOUND",
+      });
+      return;
+    }
+    res.json(resource);
+  } catch (err) {
+    next(err);
+  }
 });

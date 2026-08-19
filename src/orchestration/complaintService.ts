@@ -37,8 +37,8 @@ export async function createComplaint(input: ComplaintCreateInput): Promise<Comp
   const id = generateEntityId("complaint");
   const createdAt = Date.now();
 
-  const payment = getPayment(input.bill_payment_id);
-  const txnReferenceId = getPaymentTxnReferenceId(input.bill_payment_id);
+  const payment = await getPayment(input.bill_payment_id);
+  const txnReferenceId = await getPaymentTxnReferenceId(input.bill_payment_id);
   if (!payment || !txnReferenceId) {
     const resource = failedResource(id, createdAt, {
       code: "BBPS_PAYMENT_NOT_FOUND",
