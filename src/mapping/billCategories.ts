@@ -47,3 +47,57 @@ export const BBPS_CATEGORY_OPTIONS: BillCategoryOption[] = [
 export function listBillCategoryOptions(): BillCategoryOption[] {
   return BBPS_CATEGORY_OPTIONS;
 }
+
+/**
+ * Real production BBPS categories are lowercase snake_case (`"credit_card"`,
+ * `"mobile_prepaid"`, `"loan_repayment"`, ...) — a completely different
+ * vocabulary from this file's Title-Case-with-spaces UI keys above
+ * (`"Credit Card"`, `"Mobile Prepaid"`, `"Loan EMI / Repayment"`'s key
+ * `"Loan Repayment"`, ...), which predate any production integration and
+ * were only ever compared against the local static registry's category
+ * field (which happens to also use Title Case, since the same person wrote
+ * both).
+ *
+ * Confirmed by hand: passing a UI key straight through to production's
+ * `GET /billers?category=` (e.g. `?category=Credit%20Card`) does NOT 404 or
+ * error — it returns `200 OK` with a bare `{"entity":"collection"}` (no
+ * `items`/`count` at all), which — left unmapped — throws deep in the
+ * pagination code and gets silently swallowed by the existing
+ * network-error fallback, producing STALE local demo data that looks
+ * plausible (same category taxonomy) but is not real production coverage.
+ * This map is the fix: translate a UI category key to the real production
+ * category slug(s) BEFORE calling the production catalog client. A UI
+ * category may fan out to more than one production slug (e.g. "DTH / Cable
+ * TV" covers both `dth` and `cable_tv`). A UI category with no confirmed
+ * production equivalent (e.g. "NCC") maps to `[]` — deliberately "coming
+ * soon" rather than guessing, per this module's honesty principle.
+ */
+const UI_CATEGORY_TO_PRODUCTION_CATEGORIES: Record<string, string[]> = {
+  Electricity: ["electricity"],
+  Water: ["water"],
+  Gas: ["gas"],
+  "LPG Gas": ["lpg_gas"],
+  DTH: ["dth", "cable_tv"],
+  "Mobile Postpaid": ["mobile_postpaid"],
+  "Mobile Prepaid": ["mobile_prepaid"],
+  Broadband: ["broadband_postpaid", "landline_postpaid"],
+  "Credit Card": ["credit_card"],
+  "Loan Repayment": ["loan_repayment"],
+  Insurance: ["insurance"],
+  "Tax Payment": ["municipal_taxes", "municipal_services"],
+  "Housing Society": ["housing_society"],
+  "Education Fees": ["education_fees"],
+  "Subscription Fees": ["subscription"],
+  "Club and Association": ["clubs_and_associations"],
+  Hospital: ["hospital", "hospital_and_pathology"],
+  NCC: [],
+  "Recurring Deposit": ["recurring_deposit"],
+  FASTag: ["fastag"],
+};
+
+/** Translates a UI category key (see `BBPS_CATEGORY_OPTIONS`) to the real
+ * production BBPS category slug(s) it corresponds to. Returns `[]` for keys
+ * with no confirmed production equivalent. */
+export function mapUiCategoryToProductionCategories(uiCategoryKey: string): string[] {
+  return UI_CATEGORY_TO_PRODUCTION_CATEGORIES[uiCategoryKey] || [];
+}

@@ -1,6 +1,6 @@
 import "dotenv/config";
 
-export type BbpsMode = "mock" | "live" | "staging";
+export type BbpsMode = "mock" | "live" | "staging" | "production";
 
 export interface AppConfig {
   port: number;
@@ -21,6 +21,11 @@ function resolveBbpsMode(): BbpsMode {
   const raw = (process.env.BBPS_MODE || "mock").trim().toLowerCase();
   if (raw === "live") return "live";
   if (raw === "staging") return "staging";
+  // "production" hits the real Razorpay production BBPS API. Scope is
+  // intentionally narrow — see CLAUDE.md "Production Razorpay BBPS API —
+  // usage constraints" — enforced in src/gateway/productionBbpcuClient.ts
+  // and src/http/routes/billers.ts, not just by this flag.
+  if (raw === "production") return "production";
   return "mock";
 }
 

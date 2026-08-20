@@ -56,6 +56,8 @@ import {
   NpciTxnStatusComplainResp,
 } from "../types/npci";
 import { generateMsgOrRefId, isoTimestamp } from "../ids/generator";
+import { mapNpciChannelToProductionChannel } from "../mapping/npciChannelCodes";
+import { epochSecondsToIsoDate } from "../mapping/billDates";
 import { StagingSandboxCredentials } from "../config/credentials";
 import { BbpcuClient } from "./BbpcuClient";
 
@@ -127,7 +129,12 @@ function tagValue(tags: NpciTag[] | undefined, name: string): string | undefined
 /** Rebuilds the sandbox's `device` object from the NPCI <Agent><Device> tags carried on the request. */
 function deviceFromTags(tags: NpciTag[] | undefined): Record<string, string> {
   const channel = (tagValue(tags, "INITIATING_CHANNEL") || "int").toLowerCase();
-  const device: Record<string, string> = { initiating_channel: channel };
+  // `channel` (the NPCI code, e.g. "mob") stays as the branching key below —
+  // only the wire-level field gets translated to the real REST API's own
+  // initiating_channel vocabulary (e.g. "mobile"). See npciChannelCodes.ts;
+  // this sandbox is confirmed to be the same underlying API as production
+  // (see this file's header comment), so it has the same channel taxonomy.
+  const device: Record<string, string> = { initiating_channel: mapNpciChannelToProductionChannel(channel) };
   const ip = tagValue(tags, "IP") || "203.0.113.10";
   const mac = tagValue(tags, "MAC") || "AA:BB:CC:DD:EE:FF";
   const imei = tagValue(tags, "IMEI") || "990000862471854";
@@ -253,8 +260,8 @@ export class StagingSandboxBbpcuClient implements BbpcuClient {
           ? {
               customerName: bill.account_holder_name,
               amount: String(bill.amount ?? "0"),
-              dueDate: bill.due_date,
-              billDate: bill.bill_date,
+              dueDate: epochSecondsToIsoDate(bill.due_date),
+              billDate: epochSecondsToIsoDate(bill.bill_date),
               billNumber: bill.bill_number,
               billPeriod: (bill.bill_period || "NA").toUpperCase(),
             }

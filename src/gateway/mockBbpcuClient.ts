@@ -93,13 +93,29 @@ export class MockBbpcuClient implements BbpcuClient {
 
   async sendBillPayment(signedRequestXml: string): Promise<string> {
     const req = parseBillPaymentRequestXml(signedRequestXml);
-    const billerId = req.billDetails.biller.id;
-    const biller = getBillerById(billerId);
     const refId = generateMsgOrRefId();
 
+    // NOTE: deliberately NOT re-validating the biller against
+    // `getBillerById()` (the small ~97-entry local static demo registry)
+    // here. That registry was never meant to be exhaustive — once
+    // `BBPS_MODE=production`, most billers a merchant actually pays (e.g.
+    // "BOBCARD One Credit Card") are resolved from the real production
+    // catalog (`fetchProductionBillerById`, see billRequestService.ts /
+    // billers.ts) and correctly don't exist in this local list at all.
+    // Confirmed by hand: `grep -i BOBCARD src` returns nothing, yet it's a
+    // perfectly valid, already-fetched/validated biller — the request
+    // reaching sendBillPayment necessarily passed a prior successful
+    // fetch/validate, so re-checking "is this id in the small local list"
+    // here was never a real validity check, just an accidental
+    // force-decline for every non-local-registry biller. Previously this
+    // meant Pay Bill "failed every time" for any biller sourced from the
+    // production catalog, even though this whole path is mock-only per
+    // CLAUDE.md rule 3 and should determine success/failure purely from
+    // the mock response, not registry membership.
+    //
     // Demo-friendly decline rule: any payment amount ending in "13" (paise) declines,
     // so a demo/test script can trigger the failure path on demand.
-    const declines = !biller || req.amount.amount.endsWith("13");
+    const declines = req.amount.amount.endsWith("13");
 
     const resp: NpciBillPaymentResponse = {
       head: mockHead(refId),

@@ -46,6 +46,11 @@
     --bbps-primary: #2b5fe0;
     --bbps-primary-text: #ffffff;
     --bbps-bg: #eef1f6;
+    /* Wash applied to the in-app canvas (`.widget-body`, i.e. every screen)
+       so it resonates with the merchant's brand instead of flat white.
+       Overwritten per-theme in applyTheme() below — this is only the
+       pre-JS/no-theme fallback. */
+    --bbps-bg-tint: #f7f8fb;
     --bbps-surface: #ffffff;
     --bbps-border: #e3e5ea;
     --bbps-text: #1a1d23;
@@ -69,18 +74,38 @@
     width: 100%; max-width: 440px; background: var(--bbps-surface);
     border-radius: var(--bbps-radius); box-shadow: 0 2px 24px rgba(20,20,30,0.08);
     overflow: hidden; border: 1px solid var(--bbps-border); margin-top: 18px;
+    position: relative;
   }
   .widget-header {
     display: flex; align-items: center; gap: 10px; padding: 14px 16px;
     background: var(--bbps-primary); color: var(--bbps-primary-text);
   }
   .widget-header .logo-badge {
-    width: 26px; height: 26px; border-radius: 7px; background: rgba(255,255,255,0.18);
-    display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800;
+    /* 18px (down from 26px, ~30% smaller) — a merchant-supplied logo image
+       upscaled to fill a larger badge than its own source resolution reads
+       as pixelated/blocky; shrinking the box keeps any lower-res uploads
+       looking crisp instead of blown up. Pure-text fallback (initial letter,
+       no image) still reads fine at this size. */
+    width: 18px; height: 18px; border-radius: 5px; background: rgba(255,255,255,0.18);
+    display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 800;
     overflow: hidden; flex-shrink: 0;
   }
   .widget-header .logo-badge img { width: 100%; height: 100%; object-fit: contain; }
-  .widget-header .title { font-weight: 700; font-size: 15px; flex: 1; }
+  /* `.title-group` holds two lines: the merchant's own business name (bold,
+   * pulled from onboarding branding — see `theme.business_name` below) and,
+   * beneath it, the current screen's contextual label (e.g. "Bill details").
+   * When no business name is configured (unscoped demo widget), the group
+   * collapses back to the original single-line "Bill Payments"-style title
+   * with no subtitle — see `updateHeaderTitle()`. */
+  .widget-header .title-group { flex: 1; min-width: 0; }
+  .widget-header .title {
+    font-weight: 700; font-size: 15px; line-height: 1.25;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;
+  }
+  .widget-header .subtitle {
+    font-size: 11px; line-height: 1.2; opacity: 0.85; margin-top: 1px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: none;
+  }
   .widget-header .back-btn, .widget-header .reset-btn {
     background: none; border: none; color: var(--bbps-primary-text); cursor: pointer; font-size: 13px;
     opacity: 0.9; padding: 4px;
@@ -97,12 +122,15 @@
      swap in the full 32px+ sizing for a non-embedded, full-screen surface. */
   .bc-network-badge {
     display: flex; align-items: center; flex-shrink: 0; background: #fff;
-    border-radius: 6px; padding: 3px 7px; margin-left: 4px;
+    border-radius: 7px; padding: 5px 9px; margin-left: 4px;
   }
-  .bc-network-badge img { height: 16px; display: block; }
-  .b-assured-row { display: flex; justify-content: flex-start; margin-bottom: 14px; }
-  .b-assured-row img { height: 34px; display: block; }
-  .widget-body { padding: 16px; }
+  .bc-network-badge img { height: 24px; display: block; }
+  /* Bumped up substantially from the original 34px — at that size the mark
+     read as an afterthought/watermark rather than a trust signal on the
+     receipt, which is exactly the screen where it matters most. */
+  .b-assured-row { display: flex; justify-content: flex-start; margin-bottom: 18px; }
+  .b-assured-row img { height: 60px; display: block; }
+  .widget-body { padding: 16px; background: var(--bbps-bg-tint); }
   .screen { display: none; }
   .screen.active { display: block; }
   .search-box {
@@ -177,6 +205,7 @@
   }
   .method-tab.selected { border-color: var(--bbps-primary); color: var(--bbps-primary); background: rgba(43,95,224,0.06); }
   .bill-amount-block { text-align: center; padding: 14px 0 4px; }
+  .bill-biller-row { display: flex; align-items: center; justify-content: center; gap: 8px; }
   .bill-amount-block .amount { font-size: 30px; font-weight: 800; }
   .bill-amount-block .meta { color: var(--bbps-muted); font-size: 12px; margin-top: 4px; }
   .amount-edit { margin-top: 12px; }
@@ -192,13 +221,173 @@
   .receipt-line .k { color: var(--bbps-muted); }
   .receipt-line .v { font-weight: 600; text-align: right; }
   .co-brand-row { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--bbps-border); }
-  .co-brand-row img { height: 20px; max-width: 90px; object-fit: contain; }
+  /* 14px/63px (down from 20px/90px, ~30% smaller) — same rationale as the
+     header `.logo-badge`: shrinking the display box so a merchant's
+     lower-res uploaded logo isn't stretched past its own source resolution. */
+  .co-brand-row img { height: 14px; max-width: 63px; object-fit: contain; }
   .co-brand-row .badge { font-size: 10px; font-weight: 700; color: var(--bbps-muted); border: 1px solid var(--bbps-border); border-radius: 6px; padding: 3px 6px; }
   .status-pill { font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; text-transform: uppercase; }
   .status-pill.success { background: rgba(26,156,94,.12); color: var(--bbps-ok); }
   .status-pill.failed { background: rgba(194,58,58,.12); color: var(--bbps-bad); }
   .status-pill.processing { background: rgba(184,134,11,.12); color: var(--bbps-warn); }
   .field-error { color: var(--bbps-bad); font-size: 11px; margin-top: 4px; display: none; }
+
+  /* ── Razorpay-style "Payment Options" modal ──────────────────────────────
+     Opened from the "Pay" button on the Review & pay screen, styled after
+     Razorpay's real hosted Checkout (method rail on the left, offers +
+     method-specific fields on the right, "Powered by Razorpay" footer) —
+     this widget has no actual Checkout SDK wired in (BBPS payments here are
+     always simulated via the mock gateway, per this repo's rules), so this
+     is a cosmetic stand-in that submits through the same mock payment API
+     the old inline UPI/Card fields used to call directly. Only UPI and
+     Cards are actually wired up; the other rows are shown (for visual
+     completeness/honesty about what a real Checkout offers) but labelled
+     as not wired up in this demo rather than silently pretending to work. */
+  .rzp-modal-backdrop {
+    position: fixed; inset: 0; background: rgba(15,23,42,0.55); display: none;
+    align-items: center; justify-content: center; z-index: 40; padding: 12px;
+  }
+  .rzp-modal-backdrop.open { display: flex; }
+  .rzp-modal {
+    width: 100%; max-width: 420px; max-height: 92vh; display: flex; flex-direction: column;
+    background: #fff; border-radius: 16px; overflow: hidden;
+    border: 1px solid #cfe0ff; box-shadow: 0 16px 48px rgba(15,23,42,0.4);
+  }
+  .rzp-modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 13px 16px; border-bottom: 1px solid var(--bbps-border); flex-shrink: 0;
+  }
+  .rzp-modal-header .rzp-title { font-weight: 700; font-size: 14.5px; color: #1a1d23; }
+  .rzp-modal-header .rzp-actions { display: flex; align-items: center; gap: 14px; }
+  .rzp-modal-header .rzp-actions button {
+    background: none; border: none; cursor: pointer; font-size: 17px; color: #6b7280; padding: 0; line-height: 1;
+  }
+  .rzp-modal-body { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+  .rzp-methods { width: 116px; flex-shrink: 0; background: #f7f8fc; border-right: 1px solid var(--bbps-border); overflow-y: auto; padding: 8px 6px; }
+  .rzp-method { border-radius: 10px; padding: 8px 7px; margin-bottom: 4px; cursor: pointer; border: 1px solid transparent; }
+  .rzp-method.selected { background: #eef2ff; border-color: #c7d2ff; }
+  .rzp-method .m-label { font-weight: 700; font-size: 11px; color: #1a1d23; display: flex; align-items: center; gap: 3px; flex-wrap: wrap; }
+  .rzp-method .m-new { font-size: 8px; font-weight: 700; color: #0369a1; background: #e0f2fe; border-radius: 4px; padding: 1px 4px; }
+  .rzp-method .m-tag { font-size: 9px; color: #0a8f5b; margin-top: 3px; display: block; line-height: 1.3; }
+  .rzp-method .m-icons { display: flex; gap: 3px; margin-top: 5px; flex-wrap: wrap; }
+  .rzp-chip { min-width: 16px; height: 16px; padding: 0 2px; border-radius: 50%; background: #e5e7eb; color: #374151; font-size: 7px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+  .rzp-more { text-align: center; font-size: 10.5px; font-weight: 700; color: var(--bbps-primary); padding: 8px 4px; cursor: default; }
+  .rzp-panel { flex: 1; padding: 14px; overflow-y: auto; }
+  .rzp-offers-title { font-size: 11.5px; font-weight: 700; color: #1a1d23; margin-bottom: 8px; }
+  .rzp-offers-row { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+  .rzp-offer-chip {
+    background: #fef3ea; color: #b45309; border-radius: 999px; padding: 6px 10px; font-size: 10.5px; font-weight: 600;
+    max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .rzp-offer-more { background: #eef2ff; color: #4f46e5; border-radius: 999px; padding: 6px 10px; font-size: 10.5px; font-weight: 700; flex-shrink: 0; }
+  .rzp-panel h4 { margin: 0 0 10px; font-size: 12.5px; color: #1a1d23; }
+  .rzp-divider { text-align: center; font-size: 10.5px; color: var(--bbps-muted); margin: 16px 0; position: relative; }
+  .rzp-divider::before, .rzp-divider::after { content: ""; display: inline-block; width: 34%; height: 1px; background: var(--bbps-border); vertical-align: middle; margin: 0 8px; }
+  .rzp-qr-box { width: 148px; margin: 4px auto 10px; border: 1px solid var(--bbps-border); border-radius: 8px; padding: 6px; background: #fff; }
+  .rzp-qr-box svg { display: block; width: 100%; height: auto; }
+  .rzp-qr-apps { display: flex; justify-content: center; gap: 8px; margin-top: 10px; }
+  /* Colour-coded circular app badges for the UPI-QR row (Task: replace the
+     flat grey/black initials chips with something that actually reads as
+     "these are real, recognisable apps" — matched to each app's own brand
+     colour since we don't have their logo art bundled in this repo). */
+  .rzp-app-icon {
+    width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center;
+    justify-content: center; font-size: 9.5px; font-weight: 800; color: #fff; flex-shrink: 0;
+    box-shadow: 0 1px 3px rgba(20,20,30,0.18); text-shadow: 0 1px 1px rgba(0,0,0,0.25);
+  }
+  .rzp-app-icon--pop { background: linear-gradient(135deg, #ff5f6d, #ff8a3d); }
+  .rzp-app-icon--gpay {
+    background: conic-gradient(from -45deg, #4285f4 0deg 90deg, #34a853 90deg 180deg, #fbbc05 180deg 270deg, #ea4335 270deg 360deg);
+  }
+  .rzp-app-icon--paytm { background: #00b9f1; }
+  .rzp-app-icon--phonepe { background: #5f259f; }
+  .rzp-not-wired { font-size: 12px; color: var(--bbps-muted); line-height: 1.5; margin-top: 4px; }
+  .rzp-footer {
+    display: flex; align-items: center; justify-content: center; gap: 6px; padding: 9px;
+    border-top: 1px solid var(--bbps-border); font-size: 11px; color: #6b7280; flex-shrink: 0;
+  }
+  .rzp-footer .rzp-mark {
+    width: 15px; height: 15px; border-radius: 4px; background: #3395ff; color: #fff;
+    font-size: 9px; font-weight: 800; display: flex; align-items: center; justify-content: center;
+  }
+  .rzp-footer strong { color: #072654; font-style: italic; font-weight: 800; letter-spacing: -0.2px; }
+
+  /* ── Payment-processing animation screen ─────────────────────────────────
+     Shown between submitting a payment and revealing the receipt, so the
+     transition doesn't feel like an instant/fake API call.
+
+     This is a full-bleed takeover of the *entire* widget card (header
+     included), not just a box floating in `.widget-body`'s padded flow —
+     real payment apps show this kind of animation edge-to-edge. The
+     `#screen-processing.active` selector (id + class) intentionally
+     out-specifies the generic `.screen.active { display: block }` rule so
+     it can switch to an absolutely-positioned, inset:0 flex container
+     instead. `.widget`'s own `position: relative` + `overflow: hidden`
+     gives it the positioning context and clips it back to the card's
+     rounded corners. */
+  /* White, not dark — the video's own baked-in "Confirming Payment" card is
+     itself a white card, so a white screen background here is what actually
+     matches/blends with it (a dark backdrop just showed as a mismatched
+     black band above/below once the video was sized to its own aspect
+     ratio instead of being cropped to fill). */
+  #screen-processing.active {
+    display: flex; position: absolute; inset: 0; z-index: 20;
+    background: #ffffff; align-items: center; justify-content: center;
+    padding: 0; margin: 0;
+  }
+  .processing-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; padding: 0; text-align: center; position: relative; }
+  /* The source clip is only 592x480, and every frame of it (sampled via
+     canvas pixel-reads) is really two things stacked vertically: the
+     grayed-out "Payment Options" sheet from the top down to ~y=218/480
+     (≈45%), then the actual white "Confirming/Processing Payment" card
+     from there to the bottom. We only ever want the card, not the Payment
+     Options chrome behind it (that's redundant — the real Payment Options
+     modal is already what's visually "beneath" this screen in the product,
+     we don't need the video re-showing a recorded copy of it).
+     Pixel-sampled the raw frame (via canvas) to find the recorded mockup's
+     own chrome precisely, since eyeballing it from a screenshot wasn't
+     precise enough to fully remove: the grey "Payment Options" sheet runs
+     to y≈218/480, and there's also a thin navy bezel/border baked in along
+     the mockup's own left edge (x≈0-2), right edge (x≈582-591), and bottom
+     edge (y≈475-479) — all invisible before only because the old
+     height-driven `cover` crop happened to crop exactly into that border on
+     every side. `aspect-ratio: 592/250` + `object-position: center 96%`
+     together pick a ~[221, 471] vertical window (native px) — below the
+     Payment Options sheet, above the bottom bezel — at full, un-upscaled
+     source width; `width: 106%` then zooms in ~6% (with no explicit
+     margin — `.processing-wrap`'s own `align-items: center` centers the
+     now-wider box symmetrically) so the small overshoot past `.widget`'s
+     bounds crops the left/right bezel too, via `.widget`'s existing
+     `overflow: hidden` (no dedicated crop container needed). */
+  .processing-video {
+    /* Native frame is 592x480. The grey "Payment Options" chrome baked into
+       the video ends at native y=168 and the white confirming-payment card
+       runs to y=474 (a thin navy mockup-bezel border starts at y=475). Pixel-
+       sampled both boundaries directly off a captured video frame — an
+       earlier crop (592/250 @ 96%) put the window at [221,471], which sliced
+       straight through the "Confirming Payment" heading (native y=212-226).
+       Since the aspect-ratio's width component equals the native video width,
+       cover-fit is width-dominant and the crop height in native px equals the
+       aspect-ratio's height component exactly, with
+       topCropNative = objPositionY% * (480 - H). Solving for window
+       [170,472] (2px buffer inside the safe [168,474] white band) gives
+       H=302, objPositionY=95.5%. Left/right navy bezel borders (native
+       x<4 and x>584) are cropped separately via width:106% overshoot, which
+       .widget's overflow:hidden clips symmetrically since .processing-wrap
+       centers it. */
+    width: 106%; height: auto; aspect-ratio: 592 / 302;
+    border-radius: 0; background: #ffffff; object-fit: cover; object-position: center 95.5%;
+  }
+  /* Pinned near the top, not the bottom — the video has its own baked-in
+     footer text sitting close to its bottom edge (see cutoff comment near
+     PROCESSING_VIDEO_CUTOFF_SECONDS below), so a bottom-anchored caption
+     would collide/overlap with that at typical widget heights. */
+  .processing-caption {
+    position: absolute; left: 12px; right: 12px; top: 14px; margin: 0 auto; width: fit-content;
+    max-width: calc(100% - 24px); font-size: 12px; color: #fff; font-weight: 600;
+    background: rgba(5,7,13,0.55); padding: 6px 14px; border-radius: 999px;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+  }
 
   /* Demo settings panel — not part of the widget; a convenience for
      clicking through re-theming/re-auth without editing URL params. */
@@ -220,6 +409,86 @@
   .demo-panel button { margin-top: 10px; width: 100%; padding: 7px; border-radius: 7px; border: 1px solid var(--bbps-border); background: #f5f6f8; cursor: pointer; font-size: 12px; }
   .checkbox-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
   .checkbox-row input { width: auto; }
+
+  /* Live API-call panel — a dev/demo affordance (not part of the widget
+     itself) that mirrors every real request this page makes, side by side
+     with the screens as you click through the journey. Docked to the right
+     edge via `position: fixed` rather than as a flex sibling of `.widget`,
+     so it never disturbs `.widget`'s own centering; `body.api-log-open`
+     instead reserves room for it by padding the body on the right, which
+     (since `body` is `display:flex; justify-content:center`) shifts the
+     centered widget left to make space rather than letting the two overlap.
+     On narrow viewports there usually isn't room for both, so the panel
+     switches to overlaying on top instead (no reserved padding) — closing
+     it is one click away via its own header button or the floating toggle. */
+  .api-log-panel {
+    position: fixed; top: 0; right: 0; width: 380px; max-width: 92vw; height: 100vh;
+    background: #12141a; color: #e8e9ee; border-left: 1px solid rgba(255,255,255,0.08);
+    box-shadow: -10px 0 30px rgba(0,0,0,0.35); z-index: 60; display: flex; flex-direction: column;
+    transform: translateX(0); transition: transform 0.22s ease;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .api-log-panel.collapsed { transform: translateX(100%); }
+  .api-log-header {
+    display: flex; align-items: center; gap: 8px; padding: 14px 14px 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.08); flex-shrink: 0;
+  }
+  .api-log-header h3 {
+    margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase;
+    color: #9aa3b5; flex: 1; font-family: var(--bbps-font);
+  }
+  .api-log-badge {
+    background: #2b5fe0; color: #fff; font-size: 10.5px; font-weight: 700; padding: 1px 7px;
+    border-radius: 999px; min-width: 16px; text-align: center; line-height: 1.5;
+  }
+  .api-log-clear, .api-log-close {
+    background: transparent; border: 1px solid rgba(255,255,255,0.16); color: #c7ccd8; font-size: 11px;
+    padding: 4px 8px; border-radius: 6px; cursor: pointer; font-family: var(--bbps-font);
+  }
+  .api-log-clear:hover, .api-log-close:hover { background: rgba(255,255,255,0.08); }
+  .api-log-empty { padding: 24px 16px; color: #6b7280; font-size: 12px; line-height: 1.5; font-family: var(--bbps-font); }
+  .api-log-list { flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .api-log-entry {
+    background: #1a1d26; border: 1px solid rgba(255,255,255,0.07); border-radius: 8px; overflow: hidden;
+    animation: apiLogEntryIn 0.18s ease;
+  }
+  @keyframes apiLogEntryIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+  .api-log-entry-head {
+    width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: transparent;
+    border: none; color: inherit; cursor: pointer; text-align: left; font: inherit;
+  }
+  .api-log-method {
+    font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: rgba(255,255,255,0.09);
+    color: #c7ccd8; letter-spacing: 0.02em; flex-shrink: 0;
+  }
+  .api-log-path { flex: 1; font-size: 11.5px; color: #e8e9ee; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .api-log-meta { font-size: 9.5px; color: #6b7280; flex-shrink: 0; }
+  .api-log-status { font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 999px; flex-shrink: 0; }
+  .api-log-status.pending { background: rgba(184,134,11,0.22); color: #e0ac3c; }
+  .api-log-status.ok { background: rgba(26,156,94,0.2); color: #3ecb87; }
+  .api-log-status.failed, .api-log-status.error { background: rgba(194,58,58,0.22); color: #f07474; }
+  /* `[hidden]` alone won't win against the `display: flex` below (author
+     rules beat the UA stylesheet's `[hidden]{display:none}` regardless of
+     specificity), so it has to be spelled out explicitly here or every
+     entry renders permanently expanded. */
+  .api-log-entry-body { padding: 0 10px 10px; display: flex; flex-direction: column; gap: 8px; }
+  .api-log-entry-body[hidden] { display: none; }
+  .api-log-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; margin-bottom: 3px; }
+  .api-log-pre {
+    margin: 0; font-size: 10.5px; line-height: 1.5; color: #c7ccd8; white-space: pre-wrap; word-break: break-word;
+    background: #0f1115; border-radius: 6px; padding: 8px; max-height: 220px; overflow: auto;
+  }
+  .api-log-toggle {
+    position: fixed; top: 14px; right: 14px; z-index: 61; background: #12141a; color: #e8e9ee;
+    border: 1px solid rgba(255,255,255,0.16); border-radius: 999px; padding: 6px 12px 6px 10px;
+    font-size: 11.5px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.25); font-family: var(--bbps-font);
+  }
+  .api-log-toggle.hidden { display: none; }
+  body.api-log-open { padding-right: 400px; }
+  @media (max-width: 900px) {
+    body.api-log-open { padding-right: 12px; }
+  }
 </style>
 </head>
 <body>
@@ -229,7 +498,10 @@
   <div class="widget" id="widget">
     <div class="widget-header">
       <span class="logo-badge" id="brandBadge">₩</span>
-      <span class="title" id="headerTitle">Bill Payments</span>
+      <div class="title-group">
+        <span class="title" id="headerTitle">Bill Payments</span>
+        <span class="subtitle" id="headerSubtitle"></span>
+      </div>
       <span class="bc-network-badge" id="networkBadge" title="Powered by Bharat Connect">
         <img src="/logos/bharat-connect/bharat-connect-horizontal.svg" alt="Bharat Connect" />
       </span>
@@ -276,25 +548,17 @@
           <input type="number" id="payAmountInput" min="1" step="0.01" />
           <div class="hint" id="amountHint"></div>
         </div>
-        <label style="margin-top:16px;">Pay using</label>
-        <div class="method-tabs">
-          <div class="method-tab selected" id="tabUpi">UPI</div>
-          <div class="method-tab" id="tabCard">Card</div>
-        </div>
-        <div id="methodUpiFields">
-          <label>UPI ID</label>
-          <input type="text" id="upiVpaInput" value="demo@upi" placeholder="yourname@bank" />
-        </div>
-        <div id="methodCardFields" style="display:none;">
-          <div class="row">
-            <div><label>Card type</label>
-              <select id="cardType"><option value="debit">Debit</option><option value="credit">Credit</option></select>
-            </div>
-            <div><label>Last 4 digits</label><input type="text" id="cardLast4" value="4242" maxlength="4" /></div>
-          </div>
-        </div>
-        <button class="primary" id="payBtn">Pay</button>
+        <button class="primary" id="payBtn" style="margin-top:18px;">Pay</button>
         <div class="hint">Demo tip: an amount whose paise value ends in <code>13</code> (e.g. &#8377;50.13) simulates a biller decline, so you can try the complaint flow below.</div>
+      </div>
+
+      <!-- Screen 3b: processing animation, shown between clicking "Pay" (in
+           the Payment Options modal) and the receipt reveal below. -->
+      <div class="screen" id="screen-processing">
+        <div class="processing-wrap">
+          <video class="processing-video" id="processingVideo" src="/videos/razorpay-payment-processing.mp4" muted playsinline preload="auto"></video>
+          <div class="processing-caption">Processing your payment&hellip;</div>
+        </div>
       </div>
 
       <!-- Screen 4: receipt -->
@@ -345,6 +609,27 @@
     </div>
   </div>
 
+  <!-- Razorpay-style "Payment Options" modal — opened by the "Pay" button on
+       the Review & pay screen; see the `.rzp-*` CSS rules above for why this
+       exists (visual stand-in for a real Checkout SDK this widget doesn't
+       have wired in). -->
+  <div class="rzp-modal-backdrop" id="rzpModalBackdrop">
+    <div class="rzp-modal" id="rzpModal">
+      <div class="rzp-modal-header">
+        <span class="rzp-title">Payment Options</span>
+        <div class="rzp-actions">
+          <button type="button" title="More options">&#8942;</button>
+          <button type="button" id="rzpModalClose" title="Close">&times;</button>
+        </div>
+      </div>
+      <div class="rzp-modal-body">
+        <div class="rzp-methods" id="rzpMethods"></div>
+        <div class="rzp-panel" id="rzpPanel"></div>
+      </div>
+      <div class="rzp-footer"><span class="rzp-mark">R</span> Secured by <strong>Razorpay</strong></div>
+    </div>
+  </div>
+
   <button class="demo-gear" id="demoGearBtn" title="Demo settings">&#9881;</button>
   <div class="demo-panel" id="demoPanel">
     <h3>Demo settings</h3>
@@ -352,6 +637,8 @@
     <input type="color" id="setPrimaryColor" value="#2b5fe0" />
     <label>Merchant logo URL</label>
     <input type="text" id="setMerchantLogo" placeholder="https://.../logo.png" />
+    <label>Business name</label>
+    <input type="text" id="setBusinessName" placeholder="e.g. Cred, Navi" />
     <div class="checkbox-row"><input type="checkbox" id="setCoBranding" /><label style="margin:0;">Show co-branding on receipt</label></div>
     <label>API key ID</label>
     <input type="text" id="setKeyId" value="rzp_test_billpay_key" />
@@ -361,15 +648,59 @@
     <div class="warn">Embedding an API secret in browser JS is demo-only. In production the host app's backend should proxy this call rather than shipping the key/secret to the client.</div>
   </div>
 
+  <!-- Live API-call panel — see the `.api-log-panel` CSS comment above for
+       why this is fixed-positioned rather than a flex sibling of `.widget`.
+       Every real request the widget makes funnels through the single
+       `api()` helper (plus one raw fetch for the onboarding-scope lookup),
+       both instrumented below via apiLogStart()/apiLogFinish() — no other
+       call site needed touching. -->
+  <button class="api-log-toggle hidden" id="apiLogToggleBtn" title="Show live API calls">
+    &#9889; API calls <span class="api-log-badge" id="apiLogToggleBadge">0</span>
+  </button>
+  <div class="api-log-panel" id="apiLogPanel">
+    <div class="api-log-header">
+      <h3>Live API calls</h3>
+      <span class="api-log-badge" id="apiLogBadge">0</span>
+      <button class="api-log-clear" id="apiLogClearBtn" type="button">Clear</button>
+      <button class="api-log-close" id="apiLogCloseBtn" type="button" title="Hide panel">&times;</button>
+    </div>
+    <div class="api-log-list" id="apiLogList"></div>
+    <div class="api-log-empty" id="apiLogEmpty">No calls yet — click through the journey (search a biller, fetch a bill, pay, etc.) and each real request/response will show up here as it happens.</div>
+  </div>
+
 <script>
   const $ = (id) => document.getElementById(id);
   const root = document.documentElement.style;
+
+  // ── screen navigation state ─────────────────────────────────────────────
+  // Declared up-front (moved out of the "screen navigation" section further
+  // down) because `updateHeaderTitle()`/`applyTheme()` below read
+  // `screenTitles`/`currentScreen` as part of the very first, synchronous
+  // `applyTheme(theme)` call at page load — they'd otherwise still be in
+  // the `const`/`let` temporal dead zone at that point and throw.
+  const SCREEN_ORDER = ["search", "details", "bill", "processing", "receipt", "complaint"];
+  const screenTitles = {
+    search: "Bill Payments",
+    details: "Bill details",
+    bill: "Review & pay",
+    processing: "Processing payment",
+    receipt: "Receipt",
+    complaint: "Raise a complaint",
+  };
+  let currentScreen = "search";
+  let screenHistory = [];
 
   // ── theming ────────────────────────────────────────────────────────────
   const params = new URLSearchParams(location.search);
   const theme = {
     primary_color: params.get("primary_color") || localStorage.getItem("bbps_primary_color") || "#2b5fe0",
     merchant_logo: params.get("merchant_logo") || localStorage.getItem("bbps_merchant_logo") || "",
+    // Merchant/company display name (e.g. "Cred", "Navi") — shown in the
+    // header instead of the generic "Bill Payments" placeholder once set.
+    // Populated from the real onboarding submission's `branding.business_name`
+    // (see `applyOnboardingScope()`), a `?business_name=` query param, the
+    // demo-settings panel, or localStorage, in that order of freshness.
+    business_name: params.get("business_name") || localStorage.getItem("bbps_business_name") || "",
     co_branding: params.has("co_branding")
       ? params.get("co_branding") === "true"
       : localStorage.getItem("bbps_co_branding") === "true",
@@ -377,20 +708,78 @@
     key_secret: params.get("key_secret") || localStorage.getItem("bbps_key_secret") || "rzp_test_billpay_secret",
   };
 
+  // Header title shows the merchant's own business name (bold) once known,
+  // with the current screen's contextual label as a small subtitle beneath
+  // it — except on the "search" screen, where "Bill Payments" was always
+  // just a generic stand-in for "this is the home screen", now correctly
+  // superseded by the merchant's real name. Falls back to the original
+  // single-line "Bill Payments"/screen-title behaviour (no subtitle) when
+  // no business name is configured at all, e.g. the unscoped demo widget.
+  function updateHeaderTitle() {
+    const screenLabel = screenTitles[currentScreen] || "Bill Payments";
+    if (theme.business_name) {
+      $("headerTitle").textContent = theme.business_name;
+      if (currentScreen === "search") {
+        $("headerSubtitle").style.display = "none";
+      } else {
+        $("headerSubtitle").textContent = screenLabel;
+        $("headerSubtitle").style.display = "block";
+      }
+    } else {
+      $("headerTitle").textContent = screenLabel;
+      $("headerSubtitle").style.display = "none";
+    }
+  }
+
+  // ── brand-color-derived backgrounds ─────────────────────────────────────
+  // The in-app canvas (`.widget-body`, i.e. every screen — search, bill
+  // details, review & pay, receipt, complaint) and the outer page margin
+  // used to be a flat, hardcoded gray/white (`--bbps-bg`/`--bbps-bg-tint`
+  // literally never changed no matter what `primary_color` was applied) —
+  // so a merchant with e.g. a coral/amber brand still saw a visually
+  // disconnected plain-white app behind their own header/buttons. These
+  // derive soft, low-saturation tints of the merchant's actual
+  // `primary_color` so the whole app "picks up" their palette instead of
+  // looking like generic unthemed chrome.
+  function hexToRgbTuple(hex) {
+    const h = (hex || "").trim().replace("#", "");
+    const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+    if (!/^[0-9a-f]{6}$/i.test(full)) return null;
+    return [parseInt(full.slice(0, 2), 16), parseInt(full.slice(2, 4), 16), parseInt(full.slice(4, 6), 16)];
+  }
+  // Mixes `hex` toward white by `whiteRatio` (0 = pure hex, 1 = pure white).
+  // Plain linear RGB interpolation — no color-space conversion — which is
+  // plenty for a subtle background wash and avoids pulling in a color
+  // library for one calculation (this file is deliberately dependency-free).
+  function tintTowardWhite(hex, whiteRatio) {
+    const rgb = hexToRgbTuple(hex);
+    if (!rgb) return null;
+    const mixed = rgb.map((c) => Math.round(c + (255 - c) * whiteRatio));
+    return `#${mixed.map((n) => n.toString(16).padStart(2, "0")).join("")}`;
+  }
+
   function applyTheme(t) {
     Object.assign(theme, t);
     root.setProperty("--bbps-primary", theme.primary_color);
+    // Falls back to the original static grays if primary_color isn't a
+    // valid 3/6-digit hex (e.g. mid-typing in the demo panel's text input).
+    root.setProperty("--bbps-bg", tintTowardWhite(theme.primary_color, 0.88) || "#eef1f6");
+    root.setProperty("--bbps-bg-tint", tintTowardWhite(theme.primary_color, 0.95) || "#f7f8fb");
     if (theme.merchant_logo) {
       $("brandBadge").innerHTML = `<img src="${theme.merchant_logo}" onerror="this.style.display='none'" />`;
       $("merchantLogoImg").src = theme.merchant_logo;
       $("merchantLogoImg").style.display = "inline-block";
     } else {
-      $("brandBadge").textContent = "₩";
+      // No logo yet — fall back to the business name's initial (nicer, still
+      // "branded") rather than the generic "₩" placeholder, when known.
+      $("brandBadge").textContent = theme.business_name ? theme.business_name.trim().charAt(0).toUpperCase() : "₩";
       $("merchantLogoImg").style.display = "none";
     }
     $("coBrandRow").style.display = theme.co_branding ? "flex" : "none";
+    updateHeaderTitle();
     localStorage.setItem("bbps_primary_color", theme.primary_color);
     localStorage.setItem("bbps_merchant_logo", theme.merchant_logo);
+    localStorage.setItem("bbps_business_name", theme.business_name || "");
     localStorage.setItem("bbps_co_branding", String(theme.co_branding));
     localStorage.setItem("bbps_key_id", theme.key_id);
     localStorage.setItem("bbps_key_secret", theme.key_secret);
@@ -406,6 +795,7 @@
   applyTheme(theme);
   $("setPrimaryColor").value = theme.primary_color;
   $("setMerchantLogo").value = theme.merchant_logo;
+  $("setBusinessName").value = theme.business_name;
   $("setCoBranding").checked = theme.co_branding;
   $("setKeyId").value = theme.key_id;
   $("setKeySecret").value = theme.key_secret;
@@ -415,12 +805,113 @@
     applyTheme({
       primary_color: $("setPrimaryColor").value,
       merchant_logo: $("setMerchantLogo").value.trim(),
+      business_name: $("setBusinessName").value.trim(),
       co_branding: $("setCoBranding").checked,
       key_id: $("setKeyId").value.trim() || "rzp_test_billpay_key",
       key_secret: $("setKeySecret").value.trim() || "rzp_test_billpay_secret",
     });
     $("demoPanel").classList.remove("open");
   };
+
+  // ── Live API-call panel ──────────────────────────────────────────────
+  // Every real request the widget makes is logged here in real time —
+  // see apiLogStart()/apiLogFinish() below, called from the two places
+  // that actually hit the network: api() (the auth'd /v1/bill_payments/*
+  // helper) and loadOnboardingConfig()'s raw fetch. Deliberately NOT a
+  // generic `window.fetch` monkey-patch: those are the only two call
+  // sites, and patching global fetch would also snag the browser's own
+  // internal fetches for the video/images, which don't belong in a log
+  // meant to illustrate the bill-payment API journey.
+  const apiLog = [];
+  let apiLogSeq = 0;
+  const apiLogListEl = $("apiLogList");
+  const apiLogEmptyEl = $("apiLogEmpty");
+  const apiLogBadgeEl = $("apiLogBadge");
+  const apiLogToggleBadgeEl = $("apiLogToggleBadge");
+
+  function apiLogUpdateBadges() {
+    const n = String(apiLog.length);
+    apiLogBadgeEl.textContent = n;
+    apiLogToggleBadgeEl.textContent = n;
+    apiLogEmptyEl.style.display = apiLog.length ? "none" : "block";
+  }
+
+  function apiLogPretty(value) {
+    if (value === undefined || value === null) return "(none)";
+    if (typeof value === "string") return value;
+    try { return JSON.stringify(value, null, 2); } catch { return String(value); }
+  }
+
+  function apiLogRender(entry) {
+    let el = apiLogListEl.querySelector(`[data-log-id="${entry.id}"]`);
+    if (!el) {
+      el = document.createElement("div");
+      el.className = "api-log-entry";
+      el.dataset.logId = String(entry.id);
+      el.innerHTML = `
+        <button class="api-log-entry-head" type="button">
+          <span class="api-log-method"></span>
+          <span class="api-log-path"></span>
+          <span class="api-log-meta"></span>
+          <span class="api-log-status"></span>
+        </button>
+        <div class="api-log-entry-body" hidden>
+          <div><div class="api-log-label">Request</div><pre class="api-log-pre api-log-req"></pre></div>
+          <div><div class="api-log-label">Response</div><pre class="api-log-pre api-log-res"></pre></div>
+        </div>`;
+      el.querySelector(".api-log-entry-head").onclick = () => {
+        const body = el.querySelector(".api-log-entry-body");
+        body.hidden = !body.hidden;
+      };
+      // Newest first, so the call you just triggered is always visible at
+      // the top without needing to scroll the list.
+      apiLogListEl.prepend(el);
+    }
+    el.querySelector(".api-log-method").textContent = entry.method;
+    el.querySelector(".api-log-path").textContent = entry.path;
+    el.querySelector(".api-log-meta").textContent =
+      entry.status === "pending" ? "…" : entry.durationMs != null ? `${entry.durationMs}ms` : "";
+    const statusEl = el.querySelector(".api-log-status");
+    statusEl.className = "api-log-status " + entry.status;
+    statusEl.textContent = entry.status === "pending" ? "pending" : entry.status === "error" ? "error" : entry.httpStatus;
+    el.querySelector(".api-log-req").textContent = apiLogPretty(entry.requestBody);
+    el.querySelector(".api-log-res").textContent =
+      entry.status === "pending" ? "(pending…)" : entry.error ? entry.error : apiLogPretty(entry.responseBody);
+    apiLogUpdateBadges();
+  }
+
+  /** Call right before firing a request; returns an entry to pass to apiLogFinish(). */
+  function apiLogStart(method, path, requestBody) {
+    const entry = { id: ++apiLogSeq, method, path, requestBody, status: "pending", startedAt: Date.now() };
+    apiLog.push(entry);
+    apiLogRender(entry);
+    return entry;
+  }
+  /** Call once the request settles (success, non-2xx, or network error). */
+  function apiLogFinish(entry, patch) {
+    Object.assign(entry, patch, { durationMs: Date.now() - entry.startedAt });
+    apiLogRender(entry);
+  }
+
+  $("apiLogClearBtn").onclick = () => {
+    apiLog.length = 0;
+    apiLogListEl.innerHTML = "";
+    apiLogUpdateBadges();
+  };
+  $("apiLogCloseBtn").onclick = () => {
+    $("apiLogPanel").classList.add("collapsed");
+    $("apiLogToggleBtn").classList.remove("hidden");
+    document.body.classList.remove("api-log-open");
+  };
+  $("apiLogToggleBtn").onclick = () => {
+    $("apiLogPanel").classList.remove("collapsed");
+    $("apiLogToggleBtn").classList.add("hidden");
+    document.body.classList.add("api-log-open");
+  };
+  // Open by default — the whole point is seeing calls fire live as you
+  // click through the journey, not having to know to go find a toggle.
+  document.body.classList.add("api-log-open");
+  apiLogUpdateBadges();
 
   // ── API helper ────────────────────────────────────────────────────────
   function authHeader() {
@@ -435,6 +926,7 @@
 
   async function api(method, path, body) {
     hideApiError();
+    const logEntry = apiLogStart(method, path, body);
     let res, json;
     try {
       res = await fetch(path, {
@@ -444,9 +936,11 @@
       });
       json = await res.json().catch(() => ({}));
     } catch (err) {
+      apiLogFinish(logEntry, { status: "error", error: "Network error: " + err.message });
       showApiError("Network error: " + err.message);
       throw err;
     }
+    apiLogFinish(logEntry, { status: res.ok ? "ok" : "failed", httpStatus: res.status, responseBody: json });
     if (!res.ok) {
       showApiError((json.error && json.error.description) || `Request failed (${res.status})`);
     }
@@ -458,28 +952,36 @@
   }
   function rupees(paise) { return (Number(paise || 0) / 100).toFixed(2); }
 
-  // ── screen navigation ────────────────────────────────────────────────
-  const SCREEN_ORDER = ["search", "details", "bill", "receipt", "complaint"];
-  const screenTitles = {
-    search: "Bill Payments",
-    details: "Bill details",
-    bill: "Review & pay",
-    receipt: "Receipt",
-    complaint: "Raise a complaint",
-  };
-  let currentScreen = "search";
-  let screenHistory = [];
+  /** Formats a `YYYY-MM-DD` (ISO) date string as `DD/MM/YYYY` for display.
+   *  `bill.due_date`/`bill.bill_date` are normalized to ISO server-side (see
+   *  `src/mapping/billDates.ts` — real production returns raw Unix-epoch
+   *  seconds, which is converted there before it ever reaches this widget).
+   *  Falls back to the raw value unchanged if it doesn't look like ISO. */
+  function formatDateDDMMYYYY(isoDate) {
+    if (!isoDate) return isoDate;
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(isoDate);
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : isoDate;
+  }
 
+  // ── screen navigation ────────────────────────────────────────────────
   function showScreen(name, { pushHistory = true } = {}) {
     if (pushHistory && currentScreen !== name) screenHistory.push(currentScreen);
     SCREEN_ORDER.forEach((s) => $("screen-" + s).classList.toggle("active", s === name));
     currentScreen = name;
-    $("headerTitle").textContent = screenTitles[name] || "Bill Payments";
-    $("backBtn").style.display = screenHistory.length > 0 ? "inline-block" : "none";
+    updateHeaderTitle();
+    // "processing" (the payment animation) is a transient, non-back-navigable
+    // step — leaving mid-animation would abandon the in-flight payment
+    // request with no way back to it, so Back/Reset are hidden while it's
+    // showing (see submitPaymentWithAnimation(), which never pushes this
+    // screen onto screenHistory in the first place).
+    const isProcessing = name === "processing";
+    $("backBtn").style.display = !isProcessing && screenHistory.length > 0 ? "inline-block" : "none";
+    $("resetBtn").style.display = isProcessing ? "none" : "inline-block";
     // Bharat Connect network mark is the Stage 2 (biller selection / bill
     // fetch / bill payment / complaint) mark; the receipt screen carries the
     // Stage 3 B Assured mark instead (see #bAssuredRow), so don't show both.
-    $("networkBadge").style.display = name === "receipt" ? "none" : "flex";
+    // Neither makes sense over the processing animation either.
+    $("networkBadge").style.display = name === "receipt" || isProcessing ? "none" : "flex";
     hideApiError();
   }
   $("backBtn").onclick = () => {
@@ -497,12 +999,65 @@
   let categoryScope = null; // null = unscoped (show everything); else curated_offering.categories[]
   let onboardingConfig = null;
 
+  // Mirrors `UI_CATEGORY_TO_PRODUCTION_CATEGORIES` in
+  // src/mapping/billCategories.ts (duplicated here rather than shared,
+  // matching this repo's existing convention of duplicating small per-file
+  // helpers instead of wiring a TS module into this dependency-free static
+  // HTML page). `curated_offering.categories[].category` is always the
+  // onboarding-wizard UI key ("Credit Card"), but a biller's own `.category`
+  // field is the real BBPS category slug ("credit_card") whenever
+  // BBPS_MODE=production — those are NOT the same string. Without this
+  // translation, every scoped preview would show "No billers match" even
+  // for categories the curated_offering correctly marked as live, because
+  // `b.category` would never equal the UI key it's being compared against.
+  const UI_CATEGORY_TO_PRODUCTION_CATEGORIES = {
+    Electricity: ["electricity"],
+    Water: ["water"],
+    Gas: ["gas"],
+    "LPG Gas": ["lpg_gas"],
+    DTH: ["dth", "cable_tv"],
+    "Mobile Postpaid": ["mobile_postpaid"],
+    "Mobile Prepaid": ["mobile_prepaid"],
+    Broadband: ["broadband_postpaid", "landline_postpaid"],
+    "Credit Card": ["credit_card"],
+    "Loan Repayment": ["loan_repayment"],
+    Insurance: ["insurance"],
+    "Tax Payment": ["municipal_taxes", "municipal_services"],
+    "Housing Society": ["housing_society"],
+    "Education Fees": ["education_fees"],
+    "Subscription Fees": ["subscription"],
+    "Club and Association": ["clubs_and_associations"],
+    Hospital: ["hospital", "hospital_and_pathology"],
+    NCC: [],
+    "Recurring Deposit": ["recurring_deposit"],
+    FASTag: ["fastag"],
+  };
+  // Includes the literal UI key itself too, so this still works unchanged
+  // in BBPS_MODE=mock/staging, where the local registry's `.category` field
+  // is the UI key verbatim (both authored in Title Case by the same file).
+  function categoryMatchSet(uiCategory) {
+    return new Set([uiCategory, ...(UI_CATEGORY_TO_PRODUCTION_CATEGORIES[uiCategory] || [])]);
+  }
+
   async function loadOnboardingConfig(id) {
+    const path = `/v1/merchant_onboarding/${id}`;
+    const logEntry = apiLogStart("GET", path, undefined);
     try {
-      const res = await fetch(`/v1/merchant_onboarding/${id}`);
-      if (!res.ok) return null;
-      return await res.json();
-    } catch {
+      const res = await fetch(path);
+      if (!res.ok) {
+        apiLogFinish(logEntry, { status: "failed", httpStatus: res.status, responseBody: await res.json().catch(() => ({})) });
+        return null;
+      }
+      // Deliberately not wrapped in its own try/catch: an unparseable body
+      // on a 2xx response should still fall through to the outer catch and
+      // return null (same as before this was instrumented), not silently
+      // become a truthy `{}` that callers would then treat as a real,
+      // if empty, onboarding resource.
+      const json = await res.json();
+      apiLogFinish(logEntry, { status: "ok", httpStatus: res.status, responseBody: json });
+      return json;
+    } catch (err) {
+      apiLogFinish(logEntry, { status: "error", error: "Network error: " + err.message });
       return null;
     }
   }
@@ -520,13 +1075,29 @@
     onboardingConfig = resource;
     categoryScope = resource.curated_offering.categories;
 
+    // IMPORTANT: when scoped to a real `onboarding_id`, every branding field
+    // must come from *this* resource, full stop — never fall back to
+    // `theme.*`, because `theme.*` was seeded from `localStorage`
+    // (`bbps_business_name`/`bbps_merchant_logo`/`bbps_primary_color`) at
+    // page load, i.e. whatever merchant was last previewed in this browser.
+    // `branding.business_name` in particular is optional on the resource
+    // (see `MerchantBranding.business_name?`), so submissions that never set
+    // it used to silently inherit a completely different, previously-cached
+    // merchant's name/logo/color here — e.g. header showing "Super Money"
+    // (a stale cached value) while the banner below correctly showed the
+    // current submission's own "POP UPI" description. Missing fields must
+    // fall back to a neutral default (unset name → generic "Bill Payments"
+    // placeholder, unset color → the widget's own default blue), not to
+    // whatever happens to be sitting in localStorage.
     applyTheme({
-      primary_color: (resource.branding && resource.branding.brand_color) || theme.primary_color,
-      merchant_logo: (resource.branding && resource.branding.logo_url) || theme.merchant_logo,
+      primary_color: (resource.branding && resource.branding.brand_color) || "#2b5fe0",
+      merchant_logo: (resource.branding && resource.branding.logo_url) || "",
+      business_name: (resource.branding && resource.branding.business_name) || "",
       co_branding: resource.receipt_co_branding === true,
     });
     $("setPrimaryColor").value = theme.primary_color;
     $("setMerchantLogo").value = theme.merchant_logo;
+    $("setBusinessName").value = theme.business_name;
     $("setCoBranding").checked = theme.co_branding;
 
     const modeLabel = resource.integration_mode === "existing_app_section" ? "embedded section" : "standalone app";
@@ -570,7 +1141,7 @@
    *  wizard's curated_offering. */
   function availableCategories() {
     if (categoryScope) return categoryScope.map((c) => ({ category: c.category, status: c.status }));
-    return Array.from(new Set(state.billers.map((b) => b.category))).map((category) => ({ category, status: "live_sample_billers" }));
+    return Array.from(new Set(state.billers.map((b) => b.category))).map((category) => ({ category, status: "live" }));
   }
 
   function renderCategoryChips() {
@@ -587,7 +1158,7 @@
       const chip = document.createElement("div");
       chip.className = "chip" + (comingSoon ? " coming-soon" : "") + (activeCategory === category ? " selected" : "");
       chip.innerHTML = comingSoon ? `${category}<span class="soon-tag">SOON</span>` : category;
-      chip.title = comingSoon ? "No sample billers live in this category yet." : "";
+      chip.title = comingSoon ? "No billers live in this category yet." : "";
       chip.onclick = () => { activeCategory = category; renderCategoryChips(); renderBillerList(); };
       container.appendChild(chip);
     });
@@ -595,22 +1166,32 @@
 
   function renderBillerList() {
     const q = $("searchInput").value.trim().toLowerCase();
+    // `categoryScope[].category` is the UI key ("Credit Card"); a biller's
+    // `.category` is the real production slug ("credit_card") whenever
+    // BBPS_MODE=production. `categoryMatchSet()` translates each live UI
+    // key to every real slug it corresponds to (plus the UI key itself, for
+    // mock/staging) so biller-to-category comparisons below actually match.
     const liveCategories = categoryScope
-      ? new Set(categoryScope.filter((c) => c.status === "live_sample_billers").map((c) => c.category))
+      ? new Set(
+          categoryScope
+            .filter((c) => c.status === "live")
+            .flatMap((c) => [...categoryMatchSet(c.category)])
+        )
       : null; // null = every category in the demo catalogue is in-scope
 
-    if (activeCategory && liveCategories && !liveCategories.has(activeCategory)) {
-      // A "coming soon" category chip was clicked — there are no sample billers to list, so say so
+    if (activeCategory && liveCategories && ![...categoryMatchSet(activeCategory)].some((slug) => liveCategories.has(slug))) {
+      // A "coming soon" category chip was clicked — there are no billers to list, so say so
       // rather than silently falling through to an empty "no results" state.
       $("billerList").innerHTML =
-        `<div class="empty-state">&#128679; <strong>${activeCategory}</strong> is on our roadmap but doesn't have sample billers wired up yet. ` +
+        `<div class="empty-state">&#128679; <strong>${activeCategory}</strong> is on our roadmap but doesn't have any billers wired up yet. ` +
         `Our onboarding team will provision this from NPCI's Biller MDM feed once BBPS credentials are issued.</div>`;
       return;
     }
 
+    const activeCategoryMatchSet = activeCategory ? categoryMatchSet(activeCategory) : null;
     const filtered = state.billers.filter((b) => {
       const inScope = !liveCategories || liveCategories.has(b.category);
-      const matchesCategory = !activeCategory || b.category === activeCategory;
+      const matchesCategory = !activeCategoryMatchSet || activeCategoryMatchSet.has(b.category);
       const matchesSearch = !q || b.name.toLowerCase().includes(q) || (b.alias_name || "").toLowerCase().includes(q);
       return inScope && matchesCategory && matchesSearch;
     });
@@ -703,7 +1284,16 @@
     const { ok, body } = await api("POST", "/v1/bill_payments/bill_requests", {
       biller_id: state.selectedBiller.id,
       customer: { name, mobile },
-      device: { initiating_channel: "MOB" },
+      // This widget is a browser page embedded in a merchant's web app, not a
+      // native mobile app — "INT" (Internet) is the correct NPCI initiating
+      // channel for that, matching public/index.html's own default. Was
+      // hardcoded to "MOB" (Mobile App), which — even after translating NPCI
+      // codes to production's real channel vocabulary (see
+      // src/mapping/npciChannelCodes.ts) — production rejected live with
+      // "EXTERNAL_SERVICE_ERROR: Agent Unsupported Payment Channel": this
+      // Razorpay merchant/agent config isn't provisioned for the mobile-app
+      // channel, only the standard web/internet one.
+      device: { initiating_channel: "INT" },
       biller_data: Object.keys(accountHolder).length ? { account_holder: accountHolder } : undefined,
     });
     $("fetchBillBtn").disabled = false;
@@ -728,12 +1318,19 @@
     const amountBlock = $("amountEditBlock");
     const amountInput = $("payAmountInput");
 
+    // The biller's own logo was previously only shown on the search/details
+    // screens — this "Review & pay" screen showed the name as plain text
+    // with no visual confirmation of *which* biller you're about to send
+    // money to. Reusing the same `.biller-logo` treatment as those screens.
+    const billerLogoHtml = biller.logo_url
+      ? `<img class="biller-logo" src="${biller.logo_url}" alt="" onerror="this.style.display='none'" />`
+      : "";
     if (bill) {
       block.innerHTML = `
         <div class="bill-amount-block">
-          <div class="meta">${biller.alias_name || biller.name}</div>
+          <div class="bill-biller-row">${billerLogoHtml}<div class="meta">${biller.alias_name || biller.name}</div></div>
           <div class="amount">&#8377;${rupees(bill.amount)}</div>
-          <div class="meta">${bill.due_date ? "Due " + bill.due_date : ""}${bill.bill_number && bill.bill_number !== "NA" ? " &middot; Bill #" + bill.bill_number : ""}</div>
+          <div class="meta">${bill.due_date ? "Due " + formatDateDDMMYYYY(bill.due_date) : ""}${bill.bill_number && bill.bill_number !== "NA" ? " &middot; Bill #" + bill.bill_number : ""}</div>
         </div>`;
       const exactness = biller.payment_amount_exactness || "Exact";
       if (exactness === "Exact") {
@@ -754,7 +1351,7 @@
     } else if (adhoc) {
       block.innerHTML = `
         <div class="bill-amount-block">
-          <div class="meta">${biller.alias_name || biller.name}</div>
+          <div class="bill-biller-row">${billerLogoHtml}<div class="meta">${biller.alias_name || biller.name}</div></div>
           <div class="meta" style="margin-top:8px;">This biller doesn't support bill lookup — enter the amount you'd like to pay.</div>
         </div>`;
       amountBlock.style.display = "block";
@@ -766,23 +1363,205 @@
     }
   }
 
-  $("tabUpi").onclick = () => { state.method = "upi"; $("tabUpi").classList.add("selected"); $("tabCard").classList.remove("selected"); $("methodUpiFields").style.display = "block"; $("methodCardFields").style.display = "none"; };
-  $("tabCard").onclick = () => { state.method = "card"; $("tabCard").classList.add("selected"); $("tabUpi").classList.remove("selected"); $("methodCardFields").style.display = "block"; $("methodUpiFields").style.display = "none"; };
+  // ── Payment Options modal (Razorpay-checkout-style method picker) ──────
+  // Only "upi" and "card" are actually wired to the mock payment API below;
+  // the rest are shown for visual completeness (a real Checkout offers
+  // them) but honestly labelled as not wired up rather than pretending to
+  // work — same "don't fake coverage that isn't there" principle the
+  // curated-offering preview follows elsewhere in this product.
+  const RZP_METHODS = [
+    { id: "upi", label: "UPI", tag: "7 Offers", chips: ["G", "Ph", "PT", "POP"], wired: true },
+    { id: "card", label: "Cards", tag: "Unlimited 1% cashback", chips: ["VISA", "MC", "RuPay"], wired: true },
+    { id: "poppay", label: "POP - Pay", isNew: true, tag: "Get ₹10 cashback", chips: ["POP"], wired: false },
+    { id: "emi", label: "EMI", tag: "5% cashback up to ₹1,000", chips: ["HD", "AX", "AU"], wired: false },
+    { id: "netbanking", label: "Netbanking", tag: "Get upto ₹300 cashback", chips: ["SBI", "HDFC", "ICICI"], wired: false },
+    { id: "wallet", label: "Wallet", tag: "", chips: [], wired: false },
+  ];
 
-  $("payBtn").onclick = async () => {
+  function renderRzpMethods() {
+    const wrap = $("rzpMethods");
+    wrap.innerHTML = "";
+    RZP_METHODS.forEach((m) => {
+      const row = document.createElement("div");
+      row.className = "rzp-method" + (state.method === m.id ? " selected" : "");
+      row.innerHTML =
+        `<div class="m-label">${m.label}${m.isNew ? '<span class="m-new">New</span>' : ""}</div>` +
+        (m.tag ? `<span class="m-tag">${m.tag}</span>` : "") +
+        (m.chips.length ? `<div class="m-icons">${m.chips.map((c) => `<span class="rzp-chip">${c}</span>`).join("")}</div>` : "");
+      row.onclick = () => { state.method = m.id; renderRzpMethods(); renderRzpPanel(); };
+      wrap.appendChild(row);
+    });
+    const more = document.createElement("div");
+    more.className = "rzp-more";
+    more.textContent = "More options ⌄";
+    wrap.appendChild(more);
+  }
+
+  // Deterministic pseudo-random grid + three corner "finder" squares, styled
+  // to *look* like a UPI QR code for this demo's payment-options screen —
+  // this widget has no real Checkout SDK to source an actual UPI-intent QR
+  // from, and generating one from scratch is out of scope for a
+  // dependency-free static file, so this is explicitly decorative only
+  // (see the caption below it) and not meant to be scanned.
+  function fakeQrSvg() {
+    const n = 21, cell = 6, size = n * cell;
+    const on = new Set();
+    const setFinder = (ox, oy) => {
+      for (let y = 0; y < 7; y++) for (let x = 0; x < 7; x++) {
+        const border = x === 0 || x === 6 || y === 0 || y === 6;
+        const inner = x >= 2 && x <= 4 && y >= 2 && y <= 4;
+        if (border || inner) on.add(ox + x + "," + (oy + y));
+      }
+    };
+    setFinder(0, 0); setFinder(n - 7, 0); setFinder(0, n - 7);
+    let seed = 1337;
+    const rand = () => { seed = (seed * 48271) % 2147483647; return seed / 2147483647; };
+    for (let y = 0; y < n; y++) {
+      for (let x = 0; x < n; x++) {
+        const inFinderZone = (x < 8 && y < 8) || (x >= n - 8 && y < 8) || (x < 8 && y >= n - 8);
+        if (inFinderZone) continue;
+        if (rand() > 0.56) on.add(x + "," + y);
+      }
+    }
+    let rects = "";
+    on.forEach((key) => {
+      const [x, y] = key.split(",").map(Number);
+      rects += `<rect x="${x * cell}" y="${y * cell}" width="${cell}" height="${cell}"/>`;
+    });
+    return `<svg viewBox="0 0 ${size} ${size}" role="img" aria-label="Demo QR code placeholder"><rect width="${size}" height="${size}" fill="#fff"/><g fill="#14171c">${rects}</g></svg>`;
+  }
+
+  function renderRzpPanel() {
+    const method = RZP_METHODS.find((m) => m.id === state.method) || RZP_METHODS[0];
+    const offersHtml = `
+      <div class="rzp-offers-title">Available Offers</div>
+      <div class="rzp-offers-row">
+        <span class="rzp-offer-chip">${state.method === "card" ? "Unlimited 1% cashback with Amazon Pay" : "Upto ₹50 cashback via CRED"}</span>
+        <span class="rzp-offer-more">+2 View all</span>
+      </div>`;
+    if (state.method === "upi") {
+      const previousVpa = ($("upiVpaInput") && $("upiVpaInput").value) || "demo@upi";
+      $("rzpPanel").innerHTML = offersHtml + `
+        <label>UPI ID</label>
+        <input type="text" id="upiVpaInput" value="${previousVpa}" placeholder="yourname@bank" />
+        <button class="primary" id="rzpPayBtn" style="margin-top:10px;">Pay</button>
+        <div class="rzp-divider">or</div>
+        <h4 style="text-align:center;">UPI QR</h4>
+        <div class="rzp-qr-box">${fakeQrSvg()}</div>
+        <div class="hint" style="text-align:center;">Scan the QR using any UPI app<br/>(demo preview — not a real scannable code)</div>
+        <div class="rzp-qr-apps">
+          <span class="rzp-app-icon rzp-app-icon--pop" title="POP">P</span>
+          <span class="rzp-app-icon rzp-app-icon--gpay" title="Google Pay">G</span>
+          <span class="rzp-app-icon rzp-app-icon--paytm" title="Paytm">PT</span>
+          <span class="rzp-app-icon rzp-app-icon--phonepe" title="PhonePe">Ph</span>
+        </div>
+      `;
+    } else if (state.method === "card") {
+      $("rzpPanel").innerHTML = offersHtml + `
+        <h4>Add a new card</h4>
+        <input type="text" id="rzpCardNumber" placeholder="Card Number" maxlength="19" inputmode="numeric" />
+        <div class="row" style="margin-top:8px;">
+          <input type="text" id="rzpCardExpiry" placeholder="MM / YY" maxlength="5" inputmode="numeric" />
+          <input type="text" id="rzpCardCvv" placeholder="CVV" maxlength="3" inputmode="numeric" />
+        </div>
+        <div class="checkbox-row"><input type="checkbox" id="rzpSaveCard" /><label style="margin:0;">Save this card as per RBI guidelines</label></div>
+        <button class="primary" id="rzpPayBtn" style="margin-top:12px;">Continue</button>
+      `;
+      const numInput = $("rzpCardNumber");
+      numInput.addEventListener("input", () => {
+        numInput.value = numInput.value.replace(/\D/g, "").slice(0, 16).replace(/(.{4})/g, "$1 ").trim();
+      });
+    } else {
+      $("rzpPanel").innerHTML = offersHtml + `<div class="rzp-not-wired">${method.label} isn't wired up in this demo yet — pick <strong>UPI</strong> or <strong>Cards</strong> to try the full payment flow.</div>`;
+    }
+    const payBtn = $("rzpPayBtn");
+    if (payBtn) payBtn.onclick = handleRzpPay;
+  }
+
+  function openRzpModal() {
+    if (!state.method || !RZP_METHODS.some((m) => m.id === state.method)) state.method = "upi";
+    renderRzpMethods();
+    renderRzpPanel();
+    $("rzpModalBackdrop").classList.add("open");
+  }
+  function closeRzpModal() { $("rzpModalBackdrop").classList.remove("open"); }
+  $("rzpModalClose").onclick = closeRzpModal;
+  $("rzpModalBackdrop").onclick = (e) => { if (e.target.id === "rzpModalBackdrop") closeRzpModal(); };
+
+  $("payBtn").onclick = () => {
     const amountRupees = Number($("payAmountInput").value);
     if (!amountRupees || amountRupees <= 0) { showApiError("Enter a valid amount to pay."); return; }
+    openRzpModal();
+  };
+
+  // The source clip (razorpay-payment-processing.mp4, ~12.6s) isn't just a
+  // "confirming payment" loop — partway through it transitions into its own
+  // baked-in "Payment Successful" checkmark visual. That's not our call to
+  // make here: this widget shows its own receipt screen once the real
+  // payment API call resolves, which may land on success OR failure, so we
+  // must never let the video pre-empt that by flashing its own hard-coded
+  // "success". Scrubbed the clip frame-by-frame: it's still showing
+  // "Confirming Payment" at 5.7s and has already cut to "Payment Successful"
+  // by 6.0s, so 5.6s is used as a safe stop-before-success cutoff.
+  const PROCESSING_VIDEO_CUTOFF_SECONDS = 5.6;
+
+  // Plays the Razorpay processing animation and resolves once it's done —
+  // either because we deliberately paused it just before its own "success"
+  // visual (the common case), or on `ended`/load-error/a safety timeout if
+  // autoplay is blocked — never left unresolved, so a broken/blocked video
+  // can't strand the user on the processing screen forever.
+  function playProcessingAnimation() {
+    return new Promise((resolve) => {
+      const video = $("processingVideo");
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        video.removeEventListener("timeupdate", onTimeUpdate);
+        resolve();
+      };
+      const onTimeUpdate = () => {
+        if (video.currentTime >= PROCESSING_VIDEO_CUTOFF_SECONDS) {
+          video.pause();
+          finish();
+        }
+      };
+      video.addEventListener("timeupdate", onTimeUpdate);
+      video.onended = finish;
+      video.onerror = finish;
+      setTimeout(finish, 15000);
+      try { video.currentTime = 0; } catch {}
+      const playPromise = video.play();
+      if (playPromise && typeof playPromise.catch === "function") playPromise.catch(finish);
+    });
+  }
+
+  async function handleRzpPay() {
+    const amountRupees = Number($("payAmountInput").value);
+    if (!amountRupees || amountRupees <= 0) { showApiError("Enter a valid amount to pay."); closeRzpModal(); return; }
     const amountPaise = Math.round(amountRupees * 100);
     const br = state.billRequest;
     const bill = br.bills && br.bills[0];
 
-    const leg = state.method === "upi"
-      ? { id: "leg_" + Date.now(), provider: "razorpay", amount: amountPaise, currency: "INR", method: "upi", upi: { vpa: $("upiVpaInput").value.trim() || "demo@upi" } }
-      : { id: "leg_" + Date.now(), provider: "razorpay", amount: amountPaise, currency: "INR", method: "card", card: { type: $("cardType").value, last4: $("cardLast4").value.trim() || "4242" } };
+    let leg;
+    if (state.method === "upi") {
+      const vpa = ($("upiVpaInput") && $("upiVpaInput").value.trim()) || "demo@upi";
+      leg = { id: "leg_" + Date.now(), provider: "razorpay", amount: amountPaise, currency: "INR", method: "upi", upi: { vpa } };
+    } else if (state.method === "card") {
+      const digits = ($("rzpCardNumber") && $("rzpCardNumber").value.replace(/\D/g, "")) || "";
+      const last4 = digits.length >= 4 ? digits.slice(-4) : "4242";
+      leg = { id: "leg_" + Date.now(), provider: "razorpay", amount: amountPaise, currency: "INR", method: "card", card: { type: "credit", last4 } };
+    } else {
+      return; // Pay/Continue is never rendered for a method that isn't wired up.
+    }
 
-    $("payBtn").disabled = true;
-    $("payBtn").textContent = "Processing…";
-    const { ok, body } = await api("POST", "/v1/bill_payments/payments", {
+    closeRzpModal();
+    // Deliberately NOT pushed onto screenHistory (see showScreen()'s
+    // isProcessing handling) — this is a transient step, not a place the
+    // user can navigate back into.
+    showScreen("processing", { pushHistory: false });
+    const animation = playProcessingAnimation();
+    const apiCall = api("POST", "/v1/bill_payments/payments", {
       bill_request_id: br.id,
       bill_pay_amount: amountPaise,
       currency: "INR",
@@ -792,13 +1571,16 @@
       customer: { name: $("customerName").value.trim(), mobile: $("customerMobile").value.trim() },
       biller_id: state.selectedBiller.id,
     });
-    $("payBtn").disabled = false;
-    $("payBtn").textContent = "Pay";
-    if (!ok) return;
+    const [, { ok, body }] = await Promise.all([animation, apiCall]);
+    if (!ok) { showScreen("bill", { pushHistory: false }); return; }
     state.payment = body;
     renderReceipt();
-    showScreen("receipt");
-  };
+    // Manually recording "bill" as the history entry to return to on Back
+    // (rather than "processing", which is never back-navigable) — same
+    // back-target as when this was a single bill->receipt hop.
+    screenHistory.push("bill");
+    showScreen("receipt", { pushHistory: false });
+  }
 
   // ── Screen 4: receipt ─────────────────────────────────────────────────
   function renderReceipt() {
@@ -817,8 +1599,15 @@
       <div class="receipt-line"><span class="k">Date</span><span class="v">${new Date(p.created_at).toLocaleString()}</span></div>
     `;
     $("coBrandRow").style.display = theme.co_branding ? "flex" : "none";
-    $("doneBtn").style.display = success ? "block" : "none";
-    $("complainBtn").style.display = success ? "none" : "block";
+    // "Raise a complaint" is available on BOTH success and failure receipts —
+    // the backend's complaint flow (POST /v1/bill_payments/complaints) only
+    // needs a resolvable bill_payment_id + txnReferenceId, which is captured
+    // for successful payments too (see complaintService.ts /
+    // getPaymentTxnReferenceId()); a merchant/consumer can legitimately need
+    // to complain about a payment that *reported* success (wrong account,
+    // service not provided, duplicate charge, etc.), not just a failed one.
+    $("doneBtn").style.display = "block";
+    $("complainBtn").style.display = "block";
   }
   $("doneBtn").onclick = resetFlow;
   $("complainBtn").onclick = () => {

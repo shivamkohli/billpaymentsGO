@@ -8,10 +8,11 @@
  */
 
 import { config } from "../config/env";
-import { getCredentialsProvider, getStagingCredentials } from "../config/credentials";
+import { getCredentialsProvider, getProductionCredentials, getStagingCredentials } from "../config/credentials";
 import { BbpcuClient } from "./BbpcuClient";
 import { MockBbpcuClient } from "./mockBbpcuClient";
 import { NpciHttpBbpcuClient } from "./npciHttpBbpcuClient";
+import { ProductionBbpcuClient } from "./productionBbpcuClient";
 import { StagingSandboxBbpcuClient } from "./stagingSandboxBbpcuClient";
 
 let cached: BbpcuClient | undefined;
@@ -34,6 +35,24 @@ export function getBbpcuClient(): BbpcuClient {
       );
     }
     cached = new StagingSandboxBbpcuClient(stagingCreds);
+    return cached;
+  }
+
+  if (config.bbpsMode === "production") {
+    // Scope is intentionally narrow — see CLAUDE.md "Production Razorpay
+    // BBPS API — usage constraints". ProductionBbpcuClient itself enforces
+    // rules 2-4 (consumer-fetch cap, Pay Bill and Complaints always mock)
+    // structurally; this branch is just credential wiring, same shape as
+    // the staging branch above.
+    const productionCreds = getProductionCredentials();
+    if (!productionCreds) {
+      throw new Error(
+        "BBPS_MODE=production but no production credentials are configured. " +
+          "Populate BBPS_PRODUCTION_KEY_ID/BBPS_PRODUCTION_KEY_SECRET/BBPS_PRODUCTION_MID/" +
+          "BBPS_PRODUCTION_BASE_URL in .env, or set BBPS_MODE=mock to use the local mock responder."
+      );
+    }
+    cached = new ProductionBbpcuClient(productionCreds);
     return cached;
   }
 

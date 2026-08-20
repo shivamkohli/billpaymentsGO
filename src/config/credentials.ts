@@ -67,6 +67,35 @@ export function getStagingCredentials(): StagingSandboxCredentials | null {
   return { keyId, keySecret, baseUrl };
 }
 
+/**
+ * Credentials for the REAL Razorpay production BBPS API
+ * (`https://api.razorpay.com/v1/bill_payments`) — same wire contract as
+ * `StagingSandboxCredentials` (Basic Auth + JSON), just the live host, live
+ * key material, and a merchant id (`mid`).
+ *
+ * IMPORTANT: usage of the client built from these credentials is scoped by
+ * `src/gateway/productionBbpcuClient.ts` to categories/billers/consumer-data
+ * fetch only — see CLAUDE.md "Production Razorpay BBPS API — usage
+ * constraints". Do not widen that scope just because credentials exist here.
+ */
+export interface ProductionCredentials {
+  keyId: string;
+  keySecret: string;
+  baseUrl: string;
+  /** Razorpay merchant id (MID) these credentials belong to. */
+  mid: string;
+}
+
+/** Returns null when BBPS_PRODUCTION_* env vars are not fully populated. */
+export function getProductionCredentials(): ProductionCredentials | null {
+  const keyId = process.env.BBPS_PRODUCTION_KEY_ID?.trim();
+  const keySecret = process.env.BBPS_PRODUCTION_KEY_SECRET?.trim();
+  const baseUrl = process.env.BBPS_PRODUCTION_BASE_URL?.trim();
+  const mid = process.env.BBPS_PRODUCTION_MID?.trim();
+  if (!keyId || !keySecret || !baseUrl || !mid) return null;
+  return { keyId, keySecret, baseUrl, mid };
+}
+
 const REQUIRED_ENV_KEYS = [
   "BBPS_BBPOU_ID",
   "BBPS_ORIG_INST",

@@ -29,6 +29,16 @@ export interface MerchantBranding {
   logo_url?: string;
   /** Hex color, e.g. "#0f6fde". */
   brand_color?: string;
+  /**
+   * Merchant/company display name shown in the bill-payment widget header
+   * (e.g. "Cred", "Navi") — see `public/billpay-widget.html`'s
+   * `theme.business_name`. Pre-filled from `WebsiteScrapeResult.brand_name`
+   * (og:site_name / <title>) when "Autofill from website" was used, but
+   * always merchant-editable before submission, same treatment as
+   * `brand_color`/`logo_url` above. Falls back to the widget's generic
+   * "Bill Payments" header text when unset, rather than guessing.
+   */
+  business_name?: string;
 }
 
 /**
@@ -140,13 +150,24 @@ export interface WebsiteScrapeResult {
   warnings: string[];
 }
 
-export type CategoryCoverageStatus = "live_sample_billers" | "coming_soon";
+export type CategoryCoverageStatus = "live" | "coming_soon";
+
+/**
+ * Where a category's `biller_ids` actually came from — the real production
+ * BBPS catalog (`BBPS_MODE=production`, `fetchProductionBillers()`), or the
+ * small local static demo registry (`billerRegistry.ts`), which production
+ * mode also falls back to per-category if that category's production fetch
+ * errors. Surfaced explicitly so the UI never claims "real production
+ * billers" for what's actually mock demo data, or vice versa.
+ */
+export type BillerCatalogSource = "production" | "sample";
 
 export interface CategoryCoverage {
   category: string;
   status: CategoryCoverageStatus;
-  sample_biller_count: number;
-  sample_biller_ids: string[];
+  catalog_source: BillerCatalogSource;
+  biller_count: number;
+  biller_ids: string[];
 }
 
 export interface CuratedOfferingPreview {

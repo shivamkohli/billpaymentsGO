@@ -14,8 +14,10 @@
 import { buildBillFetchRequestXml, buildBillValidationRequestXml } from "../xml/builder";
 import { parseBillFetchResponseXml, parseBillValidationResponseXml } from "../xml/parser";
 import { getSigner } from "../xml/signer";
+import { config } from "../config/env";
 import { getCredentialsProvider } from "../config/credentials";
 import { getBbpcuClient } from "../gateway";
+import { fetchProductionBillerById } from "../gateway/productionBillerCatalogClient";
 import { decideBillRequestKind, getBillerById } from "../mapping/billerRegistry";
 import { billRequestInputToNpciRequest, npciResponseToBillRequestResource } from "../mapping/billRequest.mapper";
 import { gatewayErrorFromException } from "../mapping/common";
@@ -55,7 +57,13 @@ export async function createBillRequest(input: BillRequestCreateInput): Promise<
   const id = generateEntityId("billreq");
   const createdAt = Date.now();
 
-  const biller = getBillerById(input.gateway_biller_id || input.biller_id);
+  const lookupId = input.gateway_biller_id || input.biller_id;
+  // The local static registry doesn't know about real production billers —
+  // when BBPS_MODE=production, also check the real catalog (see
+  // src/gateway/productionBillerCatalogClient.ts) so a merchant can fetch
+  // consumer data for an actual production biller, not just the demo set.
+  const biller =
+    getBillerById(lookupId) || (config.bbpsMode === "production" ? await fetchProductionBillerById(lookupId) : undefined);
   if (!biller) {
     const resource = failedResource(id, input, createdAt, {
       code: "BBPS_BILLER_NOT_FOUND",

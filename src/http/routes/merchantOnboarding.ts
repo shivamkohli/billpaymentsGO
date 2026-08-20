@@ -146,7 +146,7 @@ function parseEntryPoint(body: Record<string, unknown>): EntryPointPreferences |
 merchantOnboardingRouter.post(
   "/",
   upload.fields([{ name: "logo", maxCount: 1 }]),
-  (req, res, next) => {
+  async (req, res, next) => {
     try {
       const body = req.body as Record<string, unknown>;
       const businessDescription = typeof body.business_description === "string" ? body.business_description.trim() : "";
@@ -250,9 +250,10 @@ merchantOnboardingRouter.post(
       // Uploaded file wins over a scraped logo URL if the merchant replaces it after autofill.
       const scrapedLogoUrl = typeof body.logo_url === "string" ? body.logo_url.trim() : "";
 
-      const resource = createMerchantOnboarding(input, {
+      const resource = await createMerchantOnboarding(input, {
         logo_url: logoFile ? `/uploads/${logoFile.filename}` : scrapedLogoUrl || undefined,
         brand_color: (body.brand_color as string) || undefined,
+        business_name: typeof body.business_name === "string" && body.business_name.trim() ? body.business_name.trim() : undefined,
       });
 
       res.status(201).json(resource);
