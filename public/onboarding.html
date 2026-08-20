@@ -1,15 +1,807 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React + TS</title>
-    <script type="module" crossorigin src="/onboarding-assets/index-1826bc9a.js"></script>
-    <link rel="stylesheet" href="/onboarding-assets/index-8aceebfd.css">
-  </head>
-  <body>
-    <div id="root"></div>
-    
-  </body>
+<head>
+<meta charset="utf-8" />
+<title>Bill Payments Setup — Razorpay</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  /* Real Blade webfonts, self-hosted (same files @razorpay/blade ships). */
+  @font-face {
+    font-family: 'TASA Orbiter';
+    src: url('/fonts/tasa-orbiter.woff2') format('woff2-variations');
+    font-weight: 125 950; font-stretch: 75% 125%; font-style: normal; font-display: swap;
+  }
+  @font-face {
+    font-family: 'Inter'; font-style: normal; font-display: swap; font-weight: 100 900;
+    src: url('/fonts/inter-latin.woff2') format('woff2-variations');
+  }
+  /* Blade-sourced tokens — same palette as onboarding-agent.html and
+     index.html, so every page in this app reads as one product. */
+  :root {
+    --navy: #0a1120; --panel: #ffffff; --bg: #f7f7f7; --border: #dee1e3;
+    --text: #292f32; --muted: #616d75; --accent: #1364f1; --accent-soft: #f5f9ff;
+    --ok: #009954; --warn: #f56d19;
+    --surface-hover: #eef0f1;
+    --bad-bg: #fdf3f2; --bad-border: #f6c1bc; --bad-text: #aa180e;
+    --ok-soft: #e6f4ed; --warn-soft: #fff6f0;
+    --font-heading: "TASA Orbiter", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; }
+  .topbar { background: var(--navy); color: #fff; padding: 14px 24px; display: flex; align-items: center; gap: 24px; }
+  .topbar .brand { font-family: var(--font-heading); font-weight: 800; font-size: 16px; letter-spacing: 0.2px; display: flex; align-items: center; gap: 8px; }
+  .topbar .brand .mark { width: 20px; height: 20px; background: var(--accent); border-radius: 5px; display: inline-block; }
+  .topbar nav { display: flex; gap: 20px; font-size: 13px; color: rgba(255,255,255,0.55); }
+  .topbar nav span.active { color: #fff; font-weight: 600; border-bottom: 2px solid var(--accent); padding-bottom: 14px; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 28px 20px 80px; }
+  h1 { font-family: var(--font-heading); font-size: 22px; margin: 0 0 4px; font-weight: 700; }
+  .subtitle { color: var(--muted); margin: 0 0 24px; font-size: 13px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 18px; }
+  .card h2 { font-family: var(--font-heading); font-size: 15px; margin: 0 0 4px; font-weight: 700; }
+  .card .desc { color: var(--muted); font-size: 12px; margin: 0 0 14px; }
+  label { display: block; margin: 12px 0 5px; font-size: 12px; font-weight: 600; color: var(--text); }
+  input[type=text], input[type=number], input[type=url], textarea, select {
+    width: 100%; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--border);
+    background: #fff; color: var(--text); font-size: 13px; font-family: inherit;
+  }
+  input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(19,100,241,0.09); }
+  textarea { min-height: 64px; resize: vertical; }
+  input[type=color] { width: 56px; height: 34px; padding: 2px; border-radius: 8px; border: 1px solid var(--border); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+  .chip {
+    padding: 7px 13px; border-radius: 999px; border: 1px solid var(--border); background: #fff;
+    cursor: pointer; font-size: 12.5px; color: var(--text); user-select: none; transition: all .15s;
+  }
+  .chip.selected { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .chip:hover:not(.selected) { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  .row { display: flex; gap: 14px; }
+  .row > * { flex: 1; }
+  .upload-box {
+    border: 1.5px dashed var(--border); border-radius: 8px; padding: 14px; text-align: center;
+    color: var(--muted); font-size: 12px; cursor: pointer; position: relative; background: var(--surface-hover);
+  }
+  .upload-box img { max-height: 60px; max-width: 100%; border-radius: 4px; }
+  .upload-box input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .radio-card { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-top: 8px; cursor: pointer; transition: all .15s; }
+  .radio-card.selected { border-color: var(--accent); background: var(--accent-soft); }
+  .radio-card input { margin-top: 2px; accent-color: var(--accent); }
+  .radio-card .title { font-weight: 600; font-size: 13px; }
+  .radio-card .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  #existingAppFields { display: none; margin-top: 6px; padding: 12px; background: var(--surface-hover); border-radius: 8px; border: 1px solid var(--border); }
+  button.primary {
+    margin-top: 8px; padding: 10px 20px; border-radius: 8px; border: none; background: var(--accent);
+    color: #fff; font-weight: 700; font-size: 13px; cursor: pointer; transition: filter .15s, transform .15s;
+  }
+  button.primary:hover { filter: brightness(1.08); transform: translateY(-1px); }
+  button.primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+  .hint { color: var(--muted); font-size: 11.5px; margin-top: 6px; }
+  .error-box { background: var(--bad-bg); border: 1px solid var(--bad-border); color: var(--bad-text); padding: 10px 12px; border-radius: 8px; font-size: 12.5px; margin-top: 10px; display: none; }
+  .result-card { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; margin-top: 10px; display: flex; justify-content: space-between; align-items: center; }
+  .status-pill { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; text-transform: uppercase; }
+  .status-pill.live { background: var(--ok-soft); color: var(--ok); }
+  .status-pill.coming_soon { background: var(--warn-soft); color: var(--warn); }
+  a.back { color: var(--muted); font-size: 12px; text-decoration: none; }
+  .scenario-toggle { display: flex; gap: 8px; margin-bottom: 14px; }
+  .scenario-toggle button {
+    flex: 1; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--border); background: #fff;
+    color: var(--text); font-size: 12.5px; font-weight: 600; cursor: pointer; transition: all .15s;
+  }
+  .scenario-toggle button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .nr-hero {
+    display: flex; align-items: center; gap: 16px; padding: 18px 20px; margin-bottom: 14px;
+    border-radius: 10px; border: 1px solid var(--border);
+    background: linear-gradient(135deg, var(--accent-soft) 0%, var(--ok-soft) 100%);
+  }
+  .nr-hero-icon { font-size: 32px; line-height: 1; }
+  .nr-hero-label { font-size: 11.5px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .4px; }
+  .nr-hero-value { font-size: 34px; font-weight: 800; color: var(--ok); line-height: 1.2; }
+  .nr-hero-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 18px; }
+  .kpi-card { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--surface-hover); text-align: center; }
+  .kpi-card .kpi-label { font-size: 10.5px; color: var(--muted); margin-bottom: 4px; }
+  .kpi-card .kpi-value { font-size: 16px; font-weight: 700; }
+  .nr-cat-bar { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-top: 8px; background: #fff; }
+  .nr-cat-bar summary { cursor: pointer; list-style: none; }
+  .nr-cat-bar summary::-webkit-details-marker { display: none; }
+  .nr-cat-bar-head { display: flex; align-items: flex-start; gap: 12px; }
+  .nr-cat-icon { font-size: 20px; width: 26px; text-align: center; flex-shrink: 0; margin-top: 1px; }
+  .nr-cat-main { flex: 1; min-width: 0; }
+  .nr-cat-top-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .nr-cat-name { font-weight: 700; font-size: 13px; }
+  .nr-cat-gmv { font-weight: 700; font-size: 12.5px; color: var(--ok); white-space: nowrap; }
+  .nr-cat-track { height: 6px; border-radius: 4px; background: var(--border); margin-top: 7px; overflow: hidden; }
+  .nr-cat-fill { height: 100%; background: var(--accent); border-radius: 4px; }
+  .nr-cat-sub { display: flex; flex-wrap: wrap; gap: 14px; font-size: 11px; color: var(--muted); margin-top: 6px; }
+  .nr-month-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11.5px; }
+  .nr-month-table th, .nr-month-table td { padding: 5px 6px; text-align: right; border-bottom: 1px solid var(--border); }
+  .nr-month-table th:first-child, .nr-month-table td:first-child { text-align: left; }
+  .nr-month-table th { color: var(--muted); font-weight: 600; }
+  .nr-basis { color: var(--muted); font-size: 11px; margin-top: 8px; }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand"><span class="mark"></span>Razorpay</div>
+    <nav>
+      <span>Home</span>
+      <span>Payments</span>
+      <span class="active">Bill Payments Setup</span>
+    </nav>
+  </div>
+
+  <div class="wrap">
+    <p><a class="back" href="/">&larr; back to API demo</a> &middot; <a class="back" href="/billpay-widget.html">preview the customer bill-payment widget &rarr;</a></p>
+    <h1>Set up Bill Payments for your business</h1>
+    <p class="subtitle">
+      Tell us a bit about your business and we'll curate a BBPS bill-payment offering —
+      which categories to enable and how to integrate — for your account.
+    </p>
+
+    <form id="onboardingForm">
+      <div class="card" id="autofillCard" style="border-color: var(--accent);">
+        <h2>Autofill from your website <span class="hint" style="margin:0;">(optional, recommended)</span></h2>
+        <p class="desc">
+          Give us your website URL and we'll pull your brand name, logo, brand color and a business
+          description automatically — everything below stays editable, so fix anything we got wrong.
+        </p>
+        <div class="row" style="align-items: flex-start;">
+          <input type="url" id="websiteUrl" placeholder="https://www.yourbusiness.com" style="flex: 3;" />
+          <button class="primary" type="button" id="autofillBtn" style="flex: 1; margin-top: 0;">Autofill</button>
+        </div>
+        <div class="error-box" id="autofillErrorBox"></div>
+        <div id="autofillSummary" style="display:none; margin-top: 12px;">
+          <div class="result-card" style="display:block;">
+            <div id="autofillDetected" style="font-size: 12.5px;"></div>
+            <div id="autofillWarnings" class="hint" style="margin-top: 6px;"></div>
+            <div id="autofillScale" class="hint" style="margin-top: 8px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>1. About your business</h2>
+        <p class="desc">One line is enough — this helps us prioritise which billers to provision first.</p>
+        <textarea id="businessDescription" placeholder="e.g. We are a small finance bank with 3 million users, primarily in tier-2/3 cities."></textarea>
+        <label>Estimated user base (optional)</label>
+        <input type="number" id="estimatedUserBase" placeholder="e.g. 3000000" />
+        <div class="hint" id="estimatedUserBaseHint" style="display:none;"></div>
+      </div>
+
+      <div class="card">
+        <h2>2. Which bill payment categories do you want?</h2>
+        <p class="desc">Select as many as apply — multiple selections allowed.</p>
+        <div class="chips" id="categoryChips">Loading categories…</div>
+      </div>
+
+      <div class="card">
+        <h2>3. Branding</h2>
+        <p class="desc">Used to theme the bill-payment experience for your customers.</p>
+        <label>Logo</label>
+        <div class="upload-box" id="logoBox">
+          <span id="logoPlaceholder">Click to upload logo (PNG/JPG/SVG, max 5MB)</span>
+          <input type="file" id="logoInput" accept="image/png,image/jpeg,image/webp,image/svg+xml" />
+        </div>
+        <label>Brand color</label>
+        <input type="color" id="brandColor" value="#1364f1" />
+      </div>
+
+      <div class="card">
+        <h2>4. Where should this live?</h2>
+        <label class="radio-card" id="newAppCard">
+          <input type="radio" name="integrationMode" value="new_app" checked />
+          <div>
+            <div class="title">Build a new standalone app</div>
+            <div class="sub">We'll help you launch a dedicated bill-payments app/mini-app.</div>
+          </div>
+        </label>
+        <label class="radio-card" id="existingAppCard">
+          <input type="radio" name="integrationMode" value="existing_app_section" />
+          <div>
+            <div class="title">Add as a section within our existing app</div>
+            <div class="sub">Embed bill payments inside your current app via deep link / SDK section.</div>
+          </div>
+        </label>
+
+        <div id="existingAppFields">
+          <label>Deep link (custom URI scheme)</label>
+          <input type="text" id="deepLink" placeholder="myapp://billpay" />
+          <div class="row">
+            <div>
+              <label>iOS Universal Link</label>
+              <input type="url" id="iosUniversalLink" placeholder="https://myapp.com/billpay" />
+            </div>
+            <div>
+              <label>Android App Link</label>
+              <input type="url" id="androidAppLink" placeholder="https://myapp.com/billpay" />
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label>Android package name</label>
+              <input type="text" id="androidPackageName" placeholder="com.mybank.app" />
+            </div>
+            <div>
+              <label>iOS bundle ID</label>
+              <input type="text" id="iosBundleId" placeholder="com.mybank.app" />
+            </div>
+          </div>
+          <div class="hint">Provide at least one — we'll use this to route customers straight to the bill-payment section.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>5. Match your app's look &amp; feel <span class="hint" id="designSystemOptionalTag" style="margin:0;">(optional)</span></h2>
+        <p class="desc" id="designSystemDesc">
+          Share your design system so the bill-payment screens feel native to your app, not bolted on.
+          Everything here is optional — our design team will follow up on anything left blank.
+        </p>
+        <label>UI design system</label>
+        <input type="text" id="designSystemName" placeholder="e.g. Material 3, Human Interface Guidelines, in-house Blade-based DS" />
+        <label>Color hex codes</label>
+        <input type="text" id="colorHexCodes" placeholder="#0f6fde, #ffffff, #1a1a1a (comma-separated)" />
+        <label>Typography guidelines</label>
+        <input type="text" id="typographyGuidelines" placeholder="e.g. Primary font: Inter, weights 400/600/700" />
+        <label>Primary button style</label>
+        <input type="text" id="primaryButtonStyle" placeholder="e.g. Rounded 8px corners, solid fill, 44px height, white label text" />
+        <label>Component libraries</label>
+        <input type="text" id="componentLibraries" placeholder="e.g. Material UI, Tailwind, in-house component library" />
+      </div>
+
+      <div class="card">
+        <h2>6. Entry point &amp; receipt branding <span class="hint" style="margin:0;">(optional)</span></h2>
+        <p class="desc">Where should customers find bill payments, and what should it be called?</p>
+        <label>Entry point label</label>
+        <select id="entryPointLabel">
+          <option value="">No preference</option>
+          <option value="Pay Bills">"Pay Bills"</option>
+          <option value="Bharat Connect">"Bharat Connect"</option>
+          <option value="Other">Other</option>
+        </select>
+        <input type="text" id="entryPointLabelOther" placeholder="Custom label" style="display:none; margin-top:8px;" />
+
+        <label>Placement</label>
+        <select id="entryPointPlacement">
+          <option value="">No preference</option>
+          <option value="home_dashboard_button">Button on home screen dashboard</option>
+          <option value="quick_action_shortcut">Quick-action shortcut</option>
+          <option value="services_subsection">Inside a services/payments sub-section</option>
+          <option value="other">Other</option>
+        </select>
+        <input type="text" id="entryPointPlacementOther" placeholder="Describe placement" style="display:none; margin-top:8px;" />
+
+        <label>Co-branding on confirmation/receipt screen</label>
+        <select id="receiptCoBranding">
+          <option value="">No preference</option>
+          <option value="true">Yes — show merchant logo + BBPS/Bharat Connect logo together</option>
+          <option value="false">No — merchant branding only</option>
+        </select>
+      </div>
+
+      <div class="error-box" id="errorBox"></div>
+      <button class="primary" type="submit" id="submitBtn">Get curated offering</button>
+    </form>
+
+    <div id="resultsSection" style="display:none;">
+      <div class="card">
+        <h2>Your curated offering</h2>
+        <p class="desc" id="recommendedNextStep"></p>
+        <div id="categoryResults"></div>
+      </div>
+      <div class="card">
+        <h2>What we captured</h2>
+        <p class="desc">Confirming the design/placement/branding preferences we'll hand off to the integration team.</p>
+        <div id="preferencesSummary" class="hint"></div>
+      </div>
+      <div class="card" id="nrPotentialCard">
+        <h2>Year-1 revenue potential <span class="hint" style="margin:0;">(estimated)</span></h2>
+        <p class="desc">
+          Projected transactions, GMV and NR across the categories you selected, chained from your
+          estimated user base through category adoption and a 12-month ramp. Built from
+          <a href="https://www.bharat-connect.com/statistics/billers/" target="_blank" rel="noopener">Bharat
+          Connect's live network stats</a> plus rough industry-MAU estimates — see notes below for
+          exactly what's sourced vs. a placeholder.
+        </p>
+        <div id="nrPotentialUnavailable" class="hint" style="display:none;"></div>
+        <div id="nrPotentialBody" style="display:none;">
+          <div class="scenario-toggle" id="scenarioToggle"></div>
+          <div class="nr-hero">
+            <div class="nr-hero-icon">💰</div>
+            <div>
+              <div class="nr-hero-label">Projected Year-1 net revenue</div>
+              <div class="nr-hero-value" id="nrHeroValue">—</div>
+              <div class="nr-hero-sub" id="nrHeroSub"></div>
+            </div>
+          </div>
+          <div class="kpi-grid" id="nrKpiGrid"></div>
+          <div id="nrCategoryTable"></div>
+          <div class="nr-basis" id="nrNotes"></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Preview your bill-payment experience</h2>
+        <p class="desc">
+          A live preview of the customer-facing bill-payment flow, themed with the brand color and
+          logo you just submitted, scoped to only the categories you picked above — live ones show
+          real sample billers, "coming soon" ones show honestly as not-yet-available rather than
+          disappearing.
+        </p>
+        <a id="previewWidgetLink" class="hint" href="#" target="_blank" style="display:inline-block;">
+          <button class="primary" type="button" style="width:auto;">Open live preview &rarr;</button>
+        </a>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const selectedCategories = new Set();
+  const categoryChipsByKey = {}; // populated once loadCategories() resolves; lets autofill pre-select chips by key
+  // Populated by "Autofill" — carried through to submit alongside (or instead of) manual entry.
+  let scrapedLogoUrl = null;
+  let scrapedSourceUrl = null;
+  let scrapedEstimatedScale = null;
+
+  function selectCategory(key) {
+    const chip = categoryChipsByKey[key];
+    if (!chip || selectedCategories.has(key)) return; // unknown key, or merchant already picked it manually
+    selectedCategories.add(key);
+    chip.classList.add("selected");
+  }
+
+  function showAutofillError(message) {
+    const box = $("autofillErrorBox");
+    box.textContent = message;
+    box.style.display = "block";
+  }
+  function hideAutofillError() { $("autofillErrorBox").style.display = "none"; }
+
+  function scaleLine(fieldLabel, estimate) {
+    const basisText = estimate.basis && estimate.basis.length ? ` — ${estimate.basis.join("; ")}` : "";
+    return `<div><strong>${fieldLabel}:</strong> ${estimate.label}${basisText}</div>`;
+  }
+
+  // The "customers" tier is a coarse bucket (see websiteScraperService.ts),
+  // not a real number — this is just a representative midpoint per bucket
+  // so the numeric field isn't left empty. Always overridable, and always
+  // flagged as a rough estimate right under the field.
+  const TIER_TO_USER_BASE = { small: 10000, medium: 250000, large: 2000000, enterprise: 10000000 };
+
+  function applyEstimatedUserBase(customersEstimate) {
+    const hint = $("estimatedUserBaseHint");
+    if (!customersEstimate || customersEstimate.tier === "unknown" || !(customersEstimate.tier in TIER_TO_USER_BASE)) {
+      hint.style.display = "none";
+      return;
+    }
+    if (!$("estimatedUserBase").value) {
+      $("estimatedUserBase").value = TIER_TO_USER_BASE[customersEstimate.tier];
+    }
+    hint.textContent = `Prefilled from website signals (${customersEstimate.label}) — this is a rough estimate, edit it if you know the real number.`;
+    hint.style.display = "block";
+  }
+
+  $("autofillBtn").addEventListener("click", async () => {
+    hideAutofillError();
+    const url = $("websiteUrl").value.trim();
+    if (!url) return showAutofillError("Enter a website URL first.");
+
+    $("autofillBtn").disabled = true;
+    $("autofillBtn").textContent = "Fetching…";
+    try {
+      const res = await fetch("/v1/merchant_onboarding/scrape", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        showAutofillError((json.error && json.error.description) || "Could not fetch that website.");
+        return;
+      }
+
+      scrapedSourceUrl = json.source_url;
+      scrapedLogoUrl = json.logo_url || null;
+      scrapedEstimatedScale = json.estimated_scale || null;
+
+      // Prefill — never destroys anything the merchant already typed by hand, only fills blanks.
+      if (json.business_description && !$("businessDescription").value.trim()) {
+        $("businessDescription").value = json.business_description;
+      }
+      if (json.brand_color) $("brandColor").value = json.brand_color;
+      if (scrapedLogoUrl) {
+        const img = document.createElement("img");
+        img.src = scrapedLogoUrl;
+        img.onerror = () => { scrapedLogoUrl = null; }; // logo URL 404s (hotlink-blocked, etc.) — don't submit a broken link
+        const placeholder = $("logoPlaceholder");
+        placeholder.replaceWith(img);
+        img.id = "logoPlaceholder";
+      }
+
+      await categoriesLoadPromise; // chips must exist before we can pre-select any of them
+      const suggestedCategories = json.suggested_categories || [];
+      suggestedCategories.forEach((s) => selectCategory(s.category));
+
+      $("autofillSummary").style.display = "block";
+      $("autofillDetected").innerHTML = `Detected <strong>${json.brand_name || "your business"}</strong> from ${json.source_url}`;
+      $("autofillWarnings").innerHTML = (json.warnings || []).map((w) => `<div>⚠ ${w}</div>`).join("");
+      if (suggestedCategories.length) {
+        $("autofillDetected").innerHTML +=
+          '<div style="margin-top:6px;">Pre-selected categories below — deselect anything that doesn\'t fit:<ul style="margin:4px 0 0 18px; padding:0;">' +
+          suggestedCategories.map((s) => `<li>${s.category} — <span class="hint" style="margin:0;">${s.reason}</span></li>`).join("") +
+          "</ul></div>";
+      }
+      if (scrapedEstimatedScale) {
+        $("autofillScale").innerHTML =
+          '<div style="margin-bottom:4px;"><strong>Rough scale signals (estimated, low confidence — not real figures):</strong></div>' +
+          scaleLine("Customers", scrapedEstimatedScale.customers) +
+          scaleLine("App downloads", scrapedEstimatedScale.app_downloads) +
+          scaleLine("GMV", scrapedEstimatedScale.gmv);
+        applyEstimatedUserBase(scrapedEstimatedScale.customers);
+      }
+    } catch (err) {
+      showAutofillError("Network error: " + err.message);
+    } finally {
+      $("autofillBtn").disabled = false;
+      $("autofillBtn").textContent = "Autofill";
+    }
+  });
+
+  async function loadCategories() {
+    const res = await fetch("/v1/merchant_onboarding/categories");
+    const json = await res.json();
+    const container = $("categoryChips");
+    container.innerHTML = "";
+    json.categories.forEach((c) => {
+      const chip = document.createElement("div");
+      chip.className = "chip";
+      chip.textContent = c.label;
+      chip.onclick = () => {
+        if (selectedCategories.has(c.key)) {
+          selectedCategories.delete(c.key);
+          chip.classList.remove("selected");
+        } else {
+          selectedCategories.add(c.key);
+          chip.classList.add("selected");
+        }
+      };
+      categoryChipsByKey[c.key] = chip;
+      container.appendChild(chip);
+    });
+  }
+
+  function wireUpload(boxId, inputId, placeholderId) {
+    const box = $(boxId), input = $(inputId), placeholder = $(placeholderId);
+    input.addEventListener("change", () => {
+      const file = input.files[0];
+      if (!file) return;
+      const img = document.createElement("img");
+      img.src = URL.createObjectURL(file);
+      placeholder.replaceWith(img);
+      img.id = placeholderId;
+    });
+  }
+  wireUpload("logoBox", "logoInput", "logoPlaceholder");
+
+  $("entryPointLabel").addEventListener("change", () => {
+    $("entryPointLabelOther").style.display = $("entryPointLabel").value === "Other" ? "block" : "none";
+  });
+  $("entryPointPlacement").addEventListener("change", () => {
+    $("entryPointPlacementOther").style.display = $("entryPointPlacement").value === "other" ? "block" : "none";
+  });
+
+  function syncIntegrationMode() {
+    const mode = document.querySelector('input[name=integrationMode]:checked').value;
+    $("newAppCard").classList.toggle("selected", mode === "new_app");
+    $("existingAppCard").classList.toggle("selected", mode === "existing_app_section");
+    $("existingAppFields").style.display = mode === "existing_app_section" ? "block" : "none";
+
+    // Embedding into an existing app means there's an existing look & feel to
+    // match, so this stops being a "nice to have" — flip it to required.
+    const isExistingApp = mode === "existing_app_section";
+    $("designSystemOptionalTag").textContent = isExistingApp ? "(required)" : "(optional)";
+    $("designSystemDesc").textContent = isExistingApp
+      ? "Share your design system so the bill-payment screens feel native to your app, not bolted on. Since you're embedding into an existing app, fill in at least one field below."
+      : "Share your design system so the bill-payment screens feel native to your app, not bolted on. Everything here is optional — our design team will follow up on anything left blank.";
+  }
+  document.querySelectorAll('input[name=integrationMode]').forEach((el) => el.addEventListener("change", syncIntegrationMode));
+  syncIntegrationMode();
+
+  function showError(message) {
+    const box = $("errorBox");
+    box.textContent = message;
+    box.style.display = "block";
+  }
+  function hideError() { $("errorBox").style.display = "none"; }
+
+  function statusLabel(status, catalogSource) {
+    if (status !== "live") return "Coming soon";
+    return catalogSource === "production" ? "Live (real production billers)" : "Live (mock/sample billers)";
+  }
+
+  $("onboardingForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    hideError();
+
+    if (!$("businessDescription").value.trim()) return showError("Please describe your business in one line.");
+    if (selectedCategories.size === 0) return showError("Select at least one bill-payment category.");
+
+    const mode = document.querySelector('input[name=integrationMode]:checked').value;
+
+    if (mode === "existing_app_section") {
+      const hasAnyDesignSystemField =
+        $("designSystemName").value.trim() ||
+        $("colorHexCodes").value.trim() ||
+        $("typographyGuidelines").value.trim() ||
+        $("primaryButtonStyle").value.trim() ||
+        $("componentLibraries").value.trim();
+      if (!hasAnyDesignSystemField) {
+        return showError(
+          "Since you're embedding within your existing app, fill in at least one field under \"5. Match your app's look & feel\"."
+        );
+      }
+    }
+    const fd = new FormData();
+    fd.append("business_description", $("businessDescription").value.trim());
+    selectedCategories.forEach((c) => fd.append("categories", c));
+    fd.append("integration_mode", mode);
+    if ($("estimatedUserBase").value) fd.append("estimated_user_base", $("estimatedUserBase").value);
+    fd.append("brand_color", $("brandColor").value);
+    if ($("logoInput").files[0]) {
+      fd.append("logo", $("logoInput").files[0]);
+    } else if (scrapedLogoUrl) {
+      fd.append("logo_url", scrapedLogoUrl);
+    }
+    if (scrapedSourceUrl) fd.append("source_url", scrapedSourceUrl);
+    if (scrapedEstimatedScale) fd.append("estimated_scale", JSON.stringify(scrapedEstimatedScale));
+
+    if (mode === "existing_app_section") {
+      fd.append("deep_link", $("deepLink").value);
+      fd.append("ios_universal_link", $("iosUniversalLink").value);
+      fd.append("android_app_link", $("androidAppLink").value);
+      fd.append("android_package_name", $("androidPackageName").value);
+      fd.append("ios_bundle_id", $("iosBundleId").value);
+    }
+
+    // Design system (optional for a new standalone app; required — enforced above — for existing_app_section)
+    if ($("designSystemName").value) fd.append("design_system_name", $("designSystemName").value);
+    $("colorHexCodes").value.split(",").map((s) => s.trim()).filter(Boolean).forEach((hex) => fd.append("color_hex_codes", hex));
+    if ($("typographyGuidelines").value) fd.append("typography_guidelines", $("typographyGuidelines").value);
+    if ($("primaryButtonStyle").value) fd.append("primary_button_style", $("primaryButtonStyle").value);
+    if ($("componentLibraries").value) fd.append("component_libraries", $("componentLibraries").value);
+
+    // Entry point + receipt co-branding (all optional)
+    if ($("entryPointLabel").value) {
+      fd.append("entry_point_label", $("entryPointLabel").value);
+      if ($("entryPointLabel").value === "Other") fd.append("entry_point_label_other", $("entryPointLabelOther").value);
+    }
+    if ($("entryPointPlacement").value) {
+      fd.append("entry_point_placement", $("entryPointPlacement").value);
+      if ($("entryPointPlacement").value === "other") fd.append("entry_point_placement_other", $("entryPointPlacementOther").value);
+    }
+    if ($("receiptCoBranding").value) fd.append("receipt_co_branding", $("receiptCoBranding").value);
+
+    $("submitBtn").disabled = true;
+    $("submitBtn").textContent = "Submitting…";
+    try {
+      const res = await fetch("/v1/merchant_onboarding", { method: "POST", body: fd });
+      const json = await res.json();
+      if (!res.ok) {
+        showError((json.error && json.error.description) || "Submission failed.");
+        return;
+      }
+      renderResults(json);
+    } catch (err) {
+      showError("Network error: " + err.message);
+    } finally {
+      $("submitBtn").disabled = false;
+      $("submitBtn").textContent = "Get curated offering";
+    }
+  });
+
+  function renderResults(resource) {
+    $("resultsSection").style.display = "block";
+    $("recommendedNextStep").textContent = resource.curated_offering.recommended_next_step;
+    $("previewWidgetLink").href = `/billpay-widget.html?onboarding_id=${resource.id}`;
+    const container = $("categoryResults");
+    container.innerHTML = "";
+    resource.curated_offering.categories.forEach((c) => {
+      const row = document.createElement("div");
+      row.className = "result-card";
+      row.innerHTML =
+        `<div><strong>${c.category}</strong><div class="hint">${c.biller_count} biller(s)${c.biller_ids.length ? ": " + c.biller_ids.join(", ") : ""}</div></div>` +
+        `<span class="status-pill ${c.status}">${statusLabel(c.status, c.catalog_source)}</span>`;
+      container.appendChild(row);
+    });
+
+    const lines = [];
+    if (resource.design_system) {
+      const ds = resource.design_system;
+      if (ds.design_system_name) lines.push(`Design system: ${ds.design_system_name}`);
+      if (ds.color_hex_codes && ds.color_hex_codes.length) lines.push(`Colors: ${ds.color_hex_codes.join(", ")}`);
+      if (ds.typography_guidelines) lines.push(`Typography: ${ds.typography_guidelines}`);
+      if (ds.primary_button_style) lines.push(`Button style: ${ds.primary_button_style}`);
+      if (ds.component_libraries) lines.push(`Component libraries: ${ds.component_libraries}`);
+    }
+    if (resource.entry_point) {
+      const ep = resource.entry_point;
+      if (ep.label) lines.push(`Entry point label: "${ep.label === "Other" ? ep.label_other : ep.label}"`);
+      if (ep.placement) {
+        const placementLabels = {
+          home_dashboard_button: "Button on home screen dashboard",
+          quick_action_shortcut: "Quick-action shortcut",
+          services_subsection: "Inside a services/payments sub-section",
+          other: ep.placement_other,
+        };
+        lines.push(`Entry point placement: ${placementLabels[ep.placement]}`);
+      }
+    }
+    if (typeof resource.receipt_co_branding === "boolean") {
+      lines.push(`Receipt co-branding: ${resource.receipt_co_branding ? "merchant logo + BBPS/Bharat Connect logo" : "merchant branding only"}`);
+    }
+    if (resource.source_url) lines.push(`Autofilled from: ${resource.source_url}`);
+    if (resource.estimated_scale) {
+      const es = resource.estimated_scale;
+      lines.push(`Estimated customers: ${es.customers.label}`);
+      lines.push(`Estimated app downloads: ${es.app_downloads.label}`);
+      lines.push(`Estimated GMV: ${es.gmv.label}`);
+    }
+    $("preferencesSummary").innerHTML = lines.length
+      ? lines.map((l) => `<div>${l}</div>`).join("")
+      : "No design/placement preferences were provided — our team will propose defaults.";
+
+    $("resultsSection").scrollIntoView({ behavior: "smooth" });
+    fetchAndRenderNrPotential(resource.id);
+  }
+
+  // ---- Year-1 revenue potential ----
+  let currentNrPotential = null;
+  let currentScenario = "base";
+
+  // Rounded, Indian-shorthand formatting for the infographic — precision beyond
+  // this (e.g. "19,55,629" or "₹2,383.99 Cr") is false confidence for numbers
+  // that are themselves rough projections, so everything here rounds off to
+  // one decimal at most and abbreviates lakhs/crores like a headline figure.
+  function trimOneDecimal(v) {
+    return (Math.round(v * 10) / 10).toFixed(1).replace(/\.0$/, "");
+  }
+  function fmtAbbrev(n) {
+    n = Math.round(n);
+    const sign = n < 0 ? "-" : "";
+    const abs = Math.abs(n);
+    if (abs >= 1e7) return sign + trimOneDecimal(abs / 1e7) + " Cr";
+    if (abs >= 1e5) return sign + trimOneDecimal(abs / 1e5) + " L";
+    if (abs >= 1e3) return sign + trimOneDecimal(abs / 1e3) + " K";
+    return sign + abs.toLocaleString("en-IN");
+  }
+  function fmtCount(n) {
+    return fmtAbbrev(n);
+  }
+  function fmtRupees(rupees) {
+    return "₹" + fmtAbbrev(rupees);
+  }
+  function fmtCrValue(crores) {
+    const abs = Math.abs(crores);
+    let val;
+    if (abs >= 100) val = Math.round(crores).toLocaleString("en-IN");
+    else if (abs >= 1) val = trimOneDecimal(crores);
+    else val = (Math.round(crores * 100) / 100).toString();
+    return "₹" + val + " Cr";
+  }
+  function fmtCr(rupees) {
+    return fmtCrValue(rupees / 1e7);
+  }
+
+  // Best-effort visual accent per category — purely decorative, no bearing on the numbers.
+  const CATEGORY_ICONS = {
+    Electricity: "⚡", Water: "💧", Gas: "🔥", "LPG Gas": "🛢️", DTH: "📺",
+    "Mobile Postpaid": "📱", "Mobile Prepaid": "📱", Broadband: "🌐", "Credit Card": "💳",
+    "Loan Repayment": "🏦", Insurance: "🛡️", "Tax Payment": "🏛️", "Housing Society": "🏢",
+    "Education Fees": "🎓", "Subscription Fees": "🔔", "Club and Association": "🎟️",
+    Hospital: "🏥", NCC: "📄", "Recurring Deposit": "📈", FASTag: "🚗",
+  };
+
+  async function fetchAndRenderNrPotential(onboardingId) {
+    $("nrPotentialCard").style.display = "block";
+    $("nrPotentialUnavailable").style.display = "none";
+    $("nrPotentialBody").style.display = "none";
+    try {
+      const res = await fetch(`/v1/merchant_onboarding/${onboardingId}/nr_potential`);
+      const json = await res.json();
+      if (!res.ok || !json.available) {
+        currentNrPotential = null;
+        $("nrPotentialUnavailable").textContent =
+          (json && json.message) || "Could not compute a revenue potential estimate for this submission.";
+        $("nrPotentialUnavailable").style.display = "block";
+        return;
+      }
+      currentNrPotential = json;
+      currentScenario = "base";
+      const toggle = $("scenarioToggle");
+      toggle.innerHTML = "";
+      Object.values(json.scenarios).forEach((s) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = s.label;
+        btn.className = s.scenario === currentScenario ? "active" : "";
+        btn.addEventListener("click", () => {
+          currentScenario = s.scenario;
+          Array.from(toggle.children).forEach((c) => c.classList.toggle("active", c === btn));
+          renderNrScenario();
+        });
+        toggle.appendChild(btn);
+      });
+      $("nrNotes").innerHTML = json.notes.map((n) => `<div>${n}</div>`).join("");
+      $("nrPotentialBody").style.display = "block";
+      renderNrScenario();
+    } catch (err) {
+      currentNrPotential = null;
+      $("nrPotentialUnavailable").textContent = "Network error while computing revenue potential: " + err.message;
+      $("nrPotentialUnavailable").style.display = "block";
+    }
+  }
+
+  function renderNrScenario() {
+    if (!currentNrPotential) return;
+    const s = currentNrPotential.scenarios[currentScenario];
+
+    $("nrHeroValue").textContent = fmtCr(s.year1_nr);
+    $("nrHeroSub").textContent =
+      `Exit run-rate ${fmtCr(s.exit_monthly_nr)}/month · NR = 0.3% of GMV · ${currentNrPotential.scenarios[currentScenario].label} scenario`;
+
+    $("nrKpiGrid").innerHTML = [
+      ["Year-1 active users", fmtCount(s.year1_active_users)],
+      ["Year-1 transactions", fmtCount(s.year1_transactions)],
+      ["Year-1 bill-pay GMV", fmtCr(s.year1_gmv)],
+      ["Exit monthly GMV (run-rate)", fmtCr(s.exit_monthly_gmv)],
+    ]
+      .map(
+        ([label, value]) =>
+          `<div class="kpi-card"><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div></div>`
+      )
+      .join("");
+
+    const container = $("nrCategoryTable");
+    container.innerHTML = "";
+    const maxGmv = Math.max(...s.categories.map((c) => c.fy1_totals.value), 1);
+    s.categories
+      .slice()
+      .sort((a, b) => b.fy1_totals.value - a.fy1_totals.value)
+      .forEach((c) => {
+        const details = document.createElement("details");
+        details.className = "nr-cat-bar";
+        const barPct = Math.max((c.fy1_totals.value / maxGmv) * 100, 2);
+        const icon = CATEGORY_ICONS[c.category] || "🧾";
+        const monthRows = c.months
+          .map(
+            (m) =>
+              `<tr><td>M${m.month}</td><td>${m.ramp_pct.toFixed(0)}%</td><td>${fmtCount(m.users)}</td><td>${fmtCount(
+                m.transactions
+              )}</td><td>${fmtRupees(m.value)}</td></tr>`
+          )
+          .join("");
+        details.innerHTML =
+          `<summary><div class="nr-cat-bar-head">` +
+          `<div class="nr-cat-icon">${icon}</div>` +
+          `<div class="nr-cat-main">` +
+          `<div class="nr-cat-top-row"><span class="nr-cat-name">${c.label}</span><span class="nr-cat-gmv">${fmtCr(
+            c.fy1_totals.value
+          )} FY1 GMV</span></div>` +
+          `<div class="nr-cat-track"><div class="nr-cat-fill" style="width:${barPct}%"></div></div>` +
+          `<div class="nr-cat-sub">` +
+          `<span>${fmtCount(c.merchant_category_mau_potential)} potential users</span>` +
+          `<span>${fmtCount(c.fy1_totals.transactions)} FY1 txns</span>` +
+          `<span>Penetration ${(c.category_penetration * 100).toFixed(0)}%</span>` +
+          `<span>ATV ₹${fmtAbbrev(c.avg_transaction_value)}</span>` +
+          `</div></div></div></summary>` +
+          `<table class="nr-month-table"><thead><tr><th>Month</th><th>Ramp</th><th>Users</th><th>Transactions</th><th>Value</th></tr></thead>` +
+          `<tbody>${monthRows}</tbody></table>` +
+          `<div class="nr-basis">NPCI reference: ${fmtCrValue(c.npci_monthly_value_cr)} / ${fmtAbbrev(
+            c.npci_monthly_volume_mn * 1e6
+          )} txns per month (as of ${c.npci_as_of}). Industry MAU basis: ${c.mau_basis}</div>`;
+        container.appendChild(details);
+      });
+  }
+
+  const categoriesLoadPromise = loadCategories();
+</script>
+</body>
 </html>
